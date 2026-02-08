@@ -28,6 +28,8 @@ type ServerSettings struct {
 	CacheControlMaxAgeRaw   string            `yaml:"cache_control_max_age" json:"-"`
 	DiscoveryStrategy       DiscoveryStrategy `yaml:"discovery_strategy" json:"discoveryStrategy"`
 	DryRun                  bool              `yaml:"dryrun" json:"dryrun"`
+	DryRunUpdateCount       int               `yaml:"dryrun_update_count" json:"dryrunUpdateCount"`
+	MessageHistorySize      int               `yaml:"message_history_size" json:"messageHistorySize"`
 	EnabledLabelFieldName   string            `yaml:"enabled_label_field_name" json:"ignoreLabelFieldName"`
 	IgnoreStackNameKeywords []string          `yaml:"ignore_compose_stack_name_keywords" json:"ignoreComposeStackNameKeywords"`
 	PossibleHomepageLabels  []string          `yaml:"possible_homepage_labels" json:"possibleHomepageLabels"`
@@ -60,6 +62,8 @@ func defaultSettings() Settings {
 			CacheControlMaxAgeRaw:   "1d",
 			DiscoveryStrategy:       DiscoveryOptOut,
 			DryRun:                  false,
+			DryRunUpdateCount:       3,
+			MessageHistorySize:      8,
 			EnabledLabelFieldName:   "com.dockobserver.enabled",
 			IgnoreStackNameKeywords: []string{"devcontainer"},
 			PossibleHomepageLabels:  []string{"org.label-schema.url", "org.opencontainers.image.url", "org.opencontainers.image.source"},
@@ -107,6 +111,12 @@ func applySettingsDefaults(s *Settings) {
 	}
 	if s.Server.TimeUntilMatureRaw == "" {
 		s.Server.TimeUntilMatureRaw = "1w"
+	}
+	if s.Server.DryRunUpdateCount <= 0 {
+		s.Server.DryRunUpdateCount = 3
+	}
+	if s.Server.MessageHistorySize <= 0 {
+		s.Server.MessageHistorySize = 8
 	}
 	if s.AutoUpdater.IntervalRaw == "" {
 		s.AutoUpdater.IntervalRaw = "1d"

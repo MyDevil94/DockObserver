@@ -12,9 +12,14 @@
 </head>
 <body>
   <div class="app">
-    <header class="app-header">
+    <header class="app-header" id="appHeader">
       <div class="logo-wrap">
         <img id="logo" src="/assets/dockobserver-solid-white.svg" class="logo" alt="DockObserver" />
+      </div>
+      <div id="stackLayoutToggle" class="layout-toggle">
+        <button id="layoutGrouped" class="toggle-button active">Grouped</button>
+        <button id="layoutGrid" class="toggle-button">Grid</button>
+        <button id="layoutCompact" class="toggle-button">Compact</button>
       </div>
       <div class="search-wrap">
         <div class="search">
@@ -33,6 +38,10 @@
             <input id="maturedOnly" type="checkbox" />
             <span>Only show matured updates</span>
           </label>
+          <label class="toggle" id="imagesOnlyFilter">
+            <input id="hideComposeImages" type="checkbox" checked />
+            <span>Hide compose images</span>
+          </label>
         </div>
       </div>
       <div class="actions">
@@ -41,9 +50,11 @@
           <button id="viewImages" class="toggle-button">Images</button>
         </div>
         <div class="action-info">
-          <div id="actionStatus" class="action-status"></div>
           <div id="lastChecked" class="last-checked"></div>
+          <div id="lastAutoChecked" class="last-checked"></div>
         </div>
+        <button id="messagesToggle" class="icon-button" title="Show messages">🔔</button>
+        <button id="openModal" class="icon-button hidden" title="Open execution details">≡</button>
         <button id="refreshLocal" class="icon-button" title="Refresh local">⟳</button>
         <button id="refreshUpdates" class="icon-button" title="Check updates">↻</button>
         <button id="themeToggle" class="icon-button" title="Toggle theme">☾</button>
@@ -67,8 +78,14 @@
         <h2 id="modalTitle">Execution Details</h2>
         <button id="modalClose" class="icon-button">✕</button>
       </div>
+      <div id="modalSessions" class="modal-sessions"></div>
       <div id="modalBody" class="modal-body"></div>
     </div>
+  </div>
+
+  <div id="toast" class="toast hidden" aria-live="polite">
+    <span id="toastMessage"></span>
+    <button id="toastClose" class="toast-close" aria-label="Close">✕</button>
   </div>
 
   <script src="/app.js"></script>

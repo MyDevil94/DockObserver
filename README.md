@@ -15,6 +15,10 @@ Check [settings.template.yml](./settings.template.yml) for a list of all availab
   - `opt-out` - whitelist mode (default)
   - `opt-in` - blacklist mode
   - Use `com.dockobserver.enabled` label to enable/disable service discovery
+- dryrun_update_count
+  - Number of stacks to randomly mark as "updates available" when `dryrun` is enabled
+- message_history_size
+  - Number of status messages to keep in `registry_cache.json` for the messages panel
 - ignore_compose_stack_name_keywords
   - List of regex patterns to ignore when discovering services
 - possible_homepage_labels (Order matters!)
@@ -68,7 +72,8 @@ services:
     ports:
       - 3000:3000
     volumes:
-      - /path/to/config:/config
+      - ./config:/config
+      - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime:ro
       # you should add mount points for each containers' docker-compose file you intend on update using this tool

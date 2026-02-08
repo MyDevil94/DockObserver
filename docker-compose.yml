@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config:/config
+      - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime:ro
       # you should add mount points for each containers' docker-compose file you intend on update using this tool

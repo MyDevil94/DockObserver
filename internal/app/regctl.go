@@ -133,14 +133,21 @@ func logRateLimit(repoTag string, err error, c *RegctlClient) bool {
 }
 
 type registryStore struct {
-	LastCheck time.Time                 `json:"lastCheck"`
-	Entries   map[string]registryEntry  `json:"entries"`
+	LastCheck     time.Time                `json:"lastCheck"`
+	LastAutoCheck time.Time                `json:"lastAutoCheck"`
+	Messages      []statusMessage          `json:"messages"`
+	Entries       map[string]registryEntry `json:"entries"`
 }
 
 type registryEntry struct {
 	CheckedAt    time.Time `json:"checkedAt"`
 	LatestUpdate time.Time `json:"latestUpdate"`
 	LatestVersion string   `json:"latestVersion"`
+}
+
+type statusMessage struct {
+	At      time.Time `json:"at"`
+	Message string    `json:"message"`
 }
 
 func (c *RegctlClient) loadStore() {
@@ -158,6 +165,9 @@ func (c *RegctlClient) loadStore() {
 	}
 	if store.Entries == nil {
 		store.Entries = map[string]registryEntry{}
+	}
+	if store.Messages == nil {
+		store.Messages = []statusMessage{}
 	}
 	c.store = store
 }
@@ -197,10 +207,86 @@ func (c *RegctlClient) GetCached(repoTag string) (registryEntry, bool) {
 	return registryEntry{}, false
 }
 
+func (c *RegctlClient) ClearCache(repoTag string) {
+	if repoTag == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.store.Entries == nil {
+		return
+	}
+	delete(c.store.Entries, repoTag)
+	c.saveStore()
+}
+
 func (c *RegctlClient) LastCheck() time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.store.LastCheck
+}
+
+func (c *RegctlClient) LastAutoCheck() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.store.LastAutoCheck
+}
+
+func (c *RegctlClient) TouchLastCheck() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.store.Entries == nil {
+		c.store.Entries = map[string]registryEntry{}
+	}
+	c.store.LastCheck = time.Now()
+	c.saveStore()
+}
+
+func (c *RegctlClient) TouchLastAutoCheck() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.store.Entries == nil {
+		c.store.Entries = map[string]registryEntry{}
+	}
+	if c.store.Messages == nil {
+		c.store.Messages = []statusMessage{}
+	}
+	c.store.LastAutoCheck = time.Now()
+	c.saveStore()
+}
+
+func (c *RegctlClient) AppendMessage(message string, limit int) {
+	if message == "" {
+		return
+	}
+	if limit <= 0 {
+		limit = 1
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.store.Messages == nil {
+		c.store.Messages = []statusMessage{}
+	}
+	c.store.Messages = append(c.store.Messages, statusMessage{
+		At:      time.Now(),
+		Message: message,
+	})
+	if len(c.store.Messages) > limit {
+		c.store.Messages = c.store.Messages[len(c.store.Messages)-limit:]
+	}
+	c.saveStore()
+}
+
+func (c *RegctlClient) Messages(limit int) []statusMessage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if limit <= 0 || limit > len(c.store.Messages) {
+		limit = len(c.store.Messages)
+	}
+	if limit == 0 {
+		return []statusMessage{}
+	}
+	return append([]statusMessage(nil), c.store.Messages[len(c.store.Messages)-limit:]...)
 }
 
 func (c *RegctlClient) RateLimitUntil() time.Time {

@@ -68,10 +68,14 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleBatchUpdate(w, r)
 	case path == "/images" && r.Method == http.MethodGet:
 		s.handleListImages(w, r)
+	case path == "/images/check" && r.Method == http.MethodGet:
+		s.handleCheckImage(w, r)
 	case path == "/images/pull" && r.Method == http.MethodPost:
 		s.handlePullImage(w, r)
 	case path == "/updates/last" && r.Method == http.MethodGet:
 		s.handleLastUpdateCheck(w, r)
+	case path == "/updates/messages" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		s.handleUpdateMessages(w, r)
 	case strings.HasPrefix(path, "/stacks/"):
 		s.handleStacks(w, r, strings.TrimPrefix(path, "/stacks/"))
 	case path == "/regctl/digest" && r.Method == http.MethodGet:
@@ -86,19 +90,68 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
 	noCache := parseBoolQuery(r, "no_cache")
 	localOnly := parseBoolQuery(r, "local_only")
+	autoCheck := parseBoolQuery(r, "auto_check")
 	images, err := s.docker.ListImageEntries(noCache, !localOnly)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	if noCache && !localOnly {
+		s.regctl.TouchLastCheck()
+		if autoCheck {
+			s.regctl.TouchLastAutoCheck()
+		}
+	}
 	writeJSON(w, http.StatusOK, images)
+}
+
+func (s *Server) handleCheckImage(w http.ResponseWriter, r *http.Request) {
+	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Missing tag"})
+		return
+	}
+	noCache := parseBoolQuery(r, "no_cache")
+	entry, err := s.docker.GetImageEntry(tag, noCache, true)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if entry == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Image not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, entry)
 }
 
 func (s *Server) handleLastUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"lastCheck":        s.regctl.LastCheck().Format(time.RFC3339),
 		"rateLimitedUntil": s.regctl.RateLimitUntil().Format(time.RFC3339),
+		"lastAutoCheck":    s.regctl.LastAutoCheck().Format(time.RFC3339),
 	})
+}
+
+type updateMessageRequest struct {
+	Message string `json:"message"`
+}
+
+func (s *Server) handleUpdateMessages(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		messages := s.regctl.Messages(s.settings.Server.MessageHistorySize)
+		writeJSON(w, http.StatusOK, messages)
+	case http.MethodPost:
+		var req updateMessageRequest
+		if err := decodeJSON(r, &req); err != nil || req.Message == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Missing message"})
+			return
+		}
+		s.regctl.AppendMessage(req.Message, s.settings.Server.MessageHistorySize)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"message": "Method not allowed"})
+	}
 }
 
 type pullImageRequest struct {
@@ -163,10 +216,17 @@ func (s *Server) handleListStacks(w http.ResponseWriter, r *http.Request) {
 	noCache := parseBoolQuery(r, "no_cache")
 	includeStopped := parseBoolQuery(r, "include_stopped")
 	localOnly := parseBoolQuery(r, "local_only")
+	autoCheck := parseBoolQuery(r, "auto_check")
 	stacks, err := s.docker.ListStacksMerged(noCache, includeStopped, !localOnly)
 	if err != nil {
 		writeError(w, err)
 		return
+	}
+	if noCache && !localOnly {
+		s.regctl.TouchLastCheck()
+		if autoCheck {
+			s.regctl.TouchLastAutoCheck()
+		}
 	}
 	writeJSON(w, http.StatusOK, stacks)
 }
@@ -285,9 +345,12 @@ func (s *Server) startBatchUpdate(req DockerStackBatchUpdateRequest) error {
 	for stack, services := range servicesByStack {
 		skip := false
 		for _, svc := range services {
-			if s.tasks.Exists(StoreKey{Stack: stack, Service: svc}) {
-				skip = true
-				break
+			key := StoreKey{Stack: stack, Service: svc}
+			if task, ok := s.tasks.Get(key); ok {
+				if !task.IsDone() || !s.settings.Server.DryRun {
+					skip = true
+					break
+				}
 			}
 		}
 		if skip {

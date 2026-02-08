@@ -3,6 +3,8 @@ server:
   cache_control_max_age: 1d
   discovery_strategy: opt-out
   dryrun: false
+  dryrun_update_count: 1
+  message_history_size: 8
   enabled_label_field_name: com.dockobserver.enabled
   ignore_compose_stack_name_keywords:
     - devcontainer

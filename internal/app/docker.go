@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,6 +185,9 @@ func (c *DockerClient) ListStacksMerged(noCache bool, includeStopped bool, inclu
 	}
 
 	sort.Slice(merged, func(i, j int) bool { return merged[i].Name < merged[j].Name })
+	if c.settings.Server.DryRun && noCache && includeRemote {
+		c.applyDryRunUpdatesToStacks(merged)
+	}
 	return merged, nil
 }
 
@@ -460,9 +464,179 @@ func (c *DockerClient) ListImageEntries(noCache bool, includeRemote bool) ([]Ima
 		}
 		entries = append(entries, entry)
 	}
+	if c.settings.Server.DryRun && noCache && includeRemote {
+		c.applyDryRunUpdatesToImages(entries, byTag, containers)
+	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].RepoTag < entries[j].RepoTag })
-	_ = byTag
 	return entries, nil
+}
+
+func (c *DockerClient) GetImageEntry(repoTag string, noCache bool, includeRemote bool) (*ImageEntry, error) {
+	if repoTag == "" {
+		return nil, fmt.Errorf("missing repoTag")
+	}
+	img, err := c.GetImageWithRemote(repoTag, noCache, includeRemote)
+	if err != nil || img == nil {
+		return nil, err
+	}
+	if img.RepoTag == "" {
+		img.RepoTag = repoTag
+	}
+	if c.settings.Server.DryRun && noCache && includeRemote {
+		now := time.Now()
+		c.regctl.UpdateCache(img.RepoTag, now, "dryrun")
+		img.LatestUpdate = now
+		if img.LatestVersion == "" {
+			img.LatestVersion = "dryrun"
+		}
+	}
+	containers, err := c.listAllContainers(true)
+	if err != nil {
+		return nil, err
+	}
+	statusMap := make(map[string]*ImageStatus)
+	for _, item := range containers {
+		imageKey := item.Config.Image
+		if imageKey == "" {
+			imageKey = item.Image
+		}
+		if imageKey == "" {
+			continue
+		}
+		addStatus(statusMap, imageKey, normalizeStatus(item.State.Status))
+	}
+	status := statusMap[img.RepoTag]
+	if status == nil {
+		status = statusForRepoTag(statusMap, img.RepoTag)
+	}
+	entry := ImageEntry{
+		Image:      *img,
+		RepoTag:    img.RepoTag,
+		Status:     "stopped",
+		HasUpdates: img.LatestUpdate.After(img.CreatedAt),
+		HomepageURL: img.HomepageURL,
+	}
+	if entry.HomepageURL == "" {
+		entry.HomepageURL = c.homepageURLFromImage(img.RepoTag, nil)
+	}
+	if status != nil {
+		entry.ContainersRunning = status.Running
+		entry.ContainersStopped = status.Stopped
+		if status.Running > 0 {
+			entry.Status = "running"
+		}
+	}
+	return &entry, nil
+}
+
+func (c *DockerClient) applyDryRunUpdatesToStacks(stacks []DockerStack) {
+	now := time.Now()
+	candidates := make([]int, 0, len(stacks))
+	for i, stack := range stacks {
+		for _, svc := range stack.Services {
+			if svc.Image != nil && svc.Image.RepoTag != "" {
+				candidates = append(candidates, i)
+				break
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		c.regctl.TouchLastCheck()
+		return
+	}
+	updateCount := c.settings.Server.DryRunUpdateCount
+	if updateCount > len(candidates) {
+		updateCount = len(candidates)
+	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng.Shuffle(len(candidates), func(i, j int) {
+		candidates[i], candidates[j] = candidates[j], candidates[i]
+	})
+	applied := 0
+	for _, idx := range candidates[:updateCount] {
+		stack := &stacks[idx]
+		for i := range stack.Services {
+			svc := &stack.Services[i]
+			if svc.Image == nil || svc.Image.RepoTag == "" {
+				continue
+			}
+			c.regctl.UpdateCache(svc.Image.RepoTag, now, "dryrun")
+			svc.Image.LatestUpdate = now
+			if svc.Image.LatestVersion == "" {
+				svc.Image.LatestVersion = "dryrun"
+			}
+			svc.HasUpdates = svc.Image.LatestUpdate.After(svc.Image.CreatedAt)
+			applied++
+		}
+		stack.HasUpdates = stackHasUpdates(stack.Services)
+	}
+	if applied == 0 {
+		c.regctl.TouchLastCheck()
+	}
+}
+
+func (c *DockerClient) applyDryRunUpdatesToImages(entries []ImageEntry, imageMap map[string]*DockerImage, containers []containerInspect) {
+	stackImages := map[string]map[string]struct{}{}
+	for _, item := range containers {
+		labels := item.Config.Labels
+		stack := labels["com.docker.compose.project"]
+		if stack == "" {
+			continue
+		}
+		imageRef := item.Config.Image
+		if imageRef == "" {
+			imageRef = item.Image
+		}
+		if imageRef == "" {
+			continue
+		}
+		img := matchImageForRef(imageMap, imageRef)
+		if img == nil || img.RepoTag == "" {
+			continue
+		}
+		if stackImages[stack] == nil {
+			stackImages[stack] = map[string]struct{}{}
+		}
+		stackImages[stack][img.RepoTag] = struct{}{}
+	}
+	if len(stackImages) == 0 {
+		c.regctl.TouchLastCheck()
+		return
+	}
+	stackNames := make([]string, 0, len(stackImages))
+	for name := range stackImages {
+		stackNames = append(stackNames, name)
+	}
+	updateCount := c.settings.Server.DryRunUpdateCount
+	if updateCount > len(stackNames) {
+		updateCount = len(stackNames)
+	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng.Shuffle(len(stackNames), func(i, j int) {
+		stackNames[i], stackNames[j] = stackNames[j], stackNames[i]
+	})
+	entryIndex := make(map[string]int, len(entries))
+	for i := range entries {
+		entryIndex[entries[i].RepoTag] = i
+	}
+	now := time.Now()
+	applied := 0
+	for _, stack := range stackNames[:updateCount] {
+		for repoTag := range stackImages[stack] {
+			c.regctl.UpdateCache(repoTag, now, "dryrun")
+			if idx, ok := entryIndex[repoTag]; ok {
+				entries[idx].Image.LatestUpdate = now
+				if entries[idx].Image.LatestVersion == "" {
+					entries[idx].Image.LatestVersion = "dryrun"
+				}
+				entries[idx].HasUpdates = entries[idx].Image.LatestUpdate.After(entries[idx].Image.CreatedAt)
+			}
+			applied++
+		}
+	}
+	if applied == 0 {
+		c.regctl.TouchLastCheck()
+	}
 }
 
 func (c *DockerClient) listAllContainers(includeStopped bool) ([]containerInspect, error) {
@@ -524,6 +698,12 @@ func (c *DockerClient) buildContainerFromInspect(item containerInspect, imageMap
 }
 
 func (c *DockerClient) PullImage(repoTag string) ([]string, error) {
+	if c.settings.Server.DryRun {
+		return []string{
+			fmt.Sprintf("dryrun: docker pull %s", repoTag),
+			"dryrun: pull simulated",
+		}, nil
+	}
 	output := []string{}
 	cmd := exec.Command("docker", "pull", repoTag)
 	stdout, err := cmd.StdoutPipe()
@@ -688,6 +868,9 @@ func (c *DockerClient) GetImage(repositoryOrTag string, noCache bool) (*DockerIm
 }
 
 func (c *DockerClient) GetImageWithRemote(repositoryOrTag string, noCache bool, includeRemote bool) (*DockerImage, error) {
+	if includeRemote && c.settings.Server.DryRun {
+		includeRemote = false
+	}
 	if !includeRemote {
 		img, err := c.getLocalImage(repositoryOrTag)
 		if err != nil || img == nil {
@@ -860,7 +1043,20 @@ func (c *DockerClient) UpdateComposeStack(task *Task, stackName string, services
 		}
 	}
 
+	if c.settings.Server.DryRun {
+		c.clearDryRunUpdates(stack)
+	}
+
 	return nil
+}
+
+func (c *DockerClient) clearDryRunUpdates(stack DockerStack) {
+	for _, svc := range stack.Services {
+		if svc.Image == nil || svc.Image.RepoTag == "" {
+			continue
+		}
+		c.regctl.ClearCache(svc.Image.RepoTag)
+	}
 }
 
 func (c *DockerClient) findStack(name string) (DockerStack, error) {
