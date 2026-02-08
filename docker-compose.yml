@@ -1,0 +1,13 @@
+services:
+  dockobserver:
+    image: ghcr.io/mydevil94/dockobserver:latest
+    container_name: dockobserver
+    restart: unless-stopped
+    volumes:
+      - ./config:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+      # you should add mount points for each containers' docker-compose file you intend on update using this tool
+      # i usually put everything in a single neat folder under
+      #  ⚠️ left stacks path == right stacks path (MUST)
+      - /opt/stacks:/opt/stacks

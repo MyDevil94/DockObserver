@@ -1,0 +1,26 @@
+
+server:
+  cache_control_max_age: 1d
+  discovery_strategy: opt-out
+  dryrun: false
+  enabled_label_field_name: com.dockobserver.enabled
+  ignore_compose_stack_name_keywords:
+    - devcontainer
+  possible_homepage_labels:  # order matters!
+    - org.label-schema.url
+    - org.opencontainers.image.url
+    - org.opencontainers.image.source
+  possible_image_version_labels:  # order matters!
+    - org.label-schema.version
+    - org.opencontainers.image.version
+  python_on_whales__ignored_image_prefixes:
+    - docker.io/library/
+    - docker.io/
+  time_until_update_is_mature: 1w
+  stacks_paths:
+    - /opt/stacks
+
+auto_updater:
+  enabled: false
+  interval: 1d
+  max_concurrent: 1

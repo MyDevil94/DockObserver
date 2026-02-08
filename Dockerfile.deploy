@@ -1,0 +1,47 @@
+## BUILDER ##
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+
+RUN apk add --no-cache git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+COPY web ./web
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/dockobserver ./cmd/dockobserver
+
+## RUNNER ##
+FROM alpine:3.20 AS runner
+WORKDIR /app
+
+ARG TARGETPLATFORM
+
+ENV WEB_PORT=3000
+EXPOSE ${WEB_PORT}
+
+RUN apk add --no-cache ca-certificates curl docker-cli docker-cli-compose
+
+# install regctl
+RUN set -eux; \
+  arch="${TARGETPLATFORM##*/}"; \
+  case "$arch" in \
+    amd64) regctl_arch=amd64 ;; \
+    arm64) regctl_arch=arm64 ;; \
+    *) echo "Unsupported arch: $arch"; exit 1 ;; \
+  esac; \
+  curl -L "https://github.com/regclient/regclient/releases/latest/download/regctl-linux-${regctl_arch}" -o /usr/bin/regctl; \
+  chmod 755 /usr/bin/regctl
+
+RUN mkdir -p /app/logs /app/config /app/data \
+  && ln -snf /app/config /config \
+  && ln -snf /app/data /data \
+  && ln -snf /app/logs /logs
+
+COPY --from=builder /out/dockobserver /usr/local/bin/dockobserver
+COPY --chmod=777 settings.template.yml /app/settings.template.yml
+COPY --chmod=777 entrypoint.sh /app/entrypoint.sh
+
+CMD ["/bin/sh", "/app/entrypoint.sh"]
