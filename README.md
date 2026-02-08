@@ -63,6 +63,7 @@ Swagger UI documentation is available at `/docs`
 services:
   dockobserver:
     image: ghcr.io/mydevil94/dockobserver
+    container_name: dockobserver
     restart: unless-stopped
     ports:
       - 3000:3000
