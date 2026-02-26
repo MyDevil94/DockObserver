@@ -1,0 +1,17 @@
+services:
+  dockobserver:
+    build: .
+    container_name: dockobserver
+    ports:
+      - "8080:8080"
+    environment:
+      - DATA_DIR=/data
+      - DOCKER_SOCKET=/var/run/docker.sock
+      - COMPOSE_MOUNTS=/stacks
+      - LOCAL_REFRESH_HOURS=6
+      - UPDATE_INTERVAL_MINUTES=30
+      - UPDATE_BATCH_SIZE=5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data
+      - ./stacks:/stacks:ro

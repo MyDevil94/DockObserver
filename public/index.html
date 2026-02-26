@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DockObserver</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">DockObserver</p>
+          <h1>Container Updates im Blick</h1>
+          <p class="subtitle">Socket + Compose scan, kompakte Status-Ansicht, gezielte Update-Checks.</p>
+        </div>
+        <div class="actions">
+          <button id="refreshBtn">Lokal neu einlesen</button>
+          <button id="batchBtn" class="ghost">Batch Update-Check</button>
+        </div>
+      </header>
+
+      <section class="meta">
+        <div id="lastRefresh">Letzter Scan: –</div>
+        <div id="count">0 Images</div>
+      </section>
+
+      <section id="groups" class="groups"></section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
