@@ -12,8 +12,33 @@ export const pickNextImages = (images: StoredImage[], limit: number) => {
 };
 
 export const checkImageUpdate = async (image: StoredImage): Promise<StoredImage> => {
-  const ref = parseImageRef(`${image.registry === "docker.io" ? "" : image.registry + "/"}${image.repo}${image.tag ? `:${image.tag}` : ""}${image.digest ? `@${image.digest}` : ""}`);
+  const refRaw = `${image.registry === "docker.io" ? "" : image.registry + "/"}${image.repo}:${image.tag ?? "latest"}`;
+  const ref = parseImageRef(refRaw);
   const now = new Date().toISOString();
+  const cleanStored = image.digest?.includes(":") ? image.digest.split(":")[1] : image.digest;
+  const cleanDeclared = image.declaredDigest?.includes(":")
+    ? image.declaredDigest.split(":")[1]
+    : image.declaredDigest;
+
+  // If compose pins a digest, mirror compose pull semantics:
+  // no tag-tracking, only check whether pinned digest is present locally.
+  if (cleanDeclared) {
+    if (!cleanStored) {
+      return {
+        ...image,
+        lastUpdateCheck: now,
+        updateAvailable: true,
+        updateMessage: "pinned digest missing locally"
+      };
+    }
+    const updateAvailable = cleanStored !== cleanDeclared;
+    return {
+      ...image,
+      lastUpdateCheck: now,
+      updateAvailable,
+      updateMessage: updateAvailable ? "pinned digest differs locally" : "pinned digest present"
+    };
+  }
 
   try {
     const { remoteDigest, error } = await getRemoteDigest(ref);
@@ -22,24 +47,22 @@ export const checkImageUpdate = async (image: StoredImage): Promise<StoredImage>
         ...image,
         lastUpdateCheck: now,
         updateAvailable: null,
-        updateMessage: error ?? "unknown"
+        updateMessage: error ?? "registry response missing digest"
       };
     }
 
-    const localDigest = image.digest;
-    const cleanLocal = localDigest?.includes(":") ? localDigest.split(":")[1] : localDigest;
     const cleanRemote = remoteDigest.includes(":") ? remoteDigest.split(":")[1] : remoteDigest;
 
-    if (!cleanLocal) {
+    if (!cleanStored) {
       return {
         ...image,
         lastUpdateCheck: now,
-        updateAvailable: null,
-        updateMessage: "local digest missing"
+        updateAvailable: true,
+        updateMessage: "image missing locally"
       };
     }
 
-    const updateAvailable = cleanLocal !== cleanRemote;
+    const updateAvailable = cleanStored !== cleanRemote;
     return {
       ...image,
       lastUpdateCheck: now,
@@ -54,6 +77,34 @@ export const checkImageUpdate = async (image: StoredImage): Promise<StoredImage>
       updateMessage: err instanceof Error ? err.message : "registry error"
     };
   }
+};
+
+const pickRandomUpdateIds = (images: StoredImage[]) => {
+  const maxUpdates = Math.min(2, images.length);
+  const updateCount = Math.floor(Math.random() * (maxUpdates + 1));
+  const pool = [...images];
+  const selected = new Set<string>();
+
+  for (let i = 0; i < updateCount; i += 1) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const chosen = pool.splice(idx, 1)[0];
+    if (chosen) selected.add(chosen.id);
+  }
+  return selected;
+};
+
+export const checkImagesDryRun = (images: StoredImage[]): StoredImage[] => {
+  const now = new Date().toISOString();
+  const updateIds = pickRandomUpdateIds(images);
+  return images.map((image) => {
+    const updateAvailable = updateIds.has(image.id);
+    return {
+      ...image,
+      lastUpdateCheck: now,
+      updateAvailable,
+      updateMessage: updateAvailable ? "dry-run dummy update" : "dry-run no update"
+    };
+  });
 };
 
 export const mergeUpdates = (images: StoredImage[], updates: StoredImage[]) => {

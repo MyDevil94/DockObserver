@@ -9,10 +9,16 @@
   <body>
     <main class="app">
       <header class="hero">
+        <div class="locale-switch">
+          <select id="localeSelect" aria-label="Sprache">
+            <option value="de">DE</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
         <div>
           <p class="eyebrow">DockObserver</p>
-          <h1>Container Updates im Blick</h1>
-          <p class="subtitle">Socket + Compose scan, kompakte Status-Ansicht, gezielte Update-Checks.</p>
+          <h1 id="heroTitle">Container Updates im Blick</h1>
+          <p id="heroSubtitle" class="subtitle">Socket + Compose scan, kompakte Status-Ansicht, gezielte Update-Checks.</p>
         </div>
         <div class="actions">
           <button id="refreshBtn">Lokal neu einlesen</button>
@@ -21,12 +27,42 @@
       </header>
 
       <section class="meta">
-        <div id="lastRefresh">Letzter Scan: –</div>
+        <div id="lastRefresh">Letzter lokaler Scan: –</div>
+        <div id="lastAutomaticCheck">Letzter automatischer Check: –</div>
         <div id="count">0 Images</div>
       </section>
 
       <section id="groups" class="groups"></section>
     </main>
+
+    <div id="confirmModal" class="modal hidden">
+      <div id="modalBackdrop" class="modal-backdrop"></div>
+      <div class="modal-card">
+        <h2 id="modalTitle">Update bestaetigen</h2>
+        <p id="modalText" class="modal-text"></p>
+        <div id="modalItems" class="modal-items"></div>
+        <label id="modalPruneLabel" class="modal-prune">
+          <input id="modalPrune" type="checkbox" />
+          Image prune nach Update ausfuehren (`docker image prune -af`)
+        </label>
+        <div class="modal-actions">
+          <button id="modalCancel" class="ghost">Abbrechen</button>
+          <button id="modalConfirm">Update starten</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="consoleModal" class="modal hidden">
+      <div id="consoleBackdrop" class="modal-backdrop"></div>
+      <div class="modal-card console-card">
+        <div class="console-header">
+          <h2 id="consoleTitle">Update Konsole</h2>
+          <button id="consoleClose" class="ghost">Schliessen</button>
+        </div>
+        <div id="consoleTabs" class="console-tabs"></div>
+        <pre id="consoleOutput" class="console-output"></pre>
+      </div>
+    </div>
 
     <script src="app.js"></script>
   </body>

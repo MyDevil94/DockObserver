@@ -1,3 +1,5 @@
+import { Locale, resolveLocale } from "./i18n.js";
+
 export type Config = {
   dataDir: string;
   dockerSocketPath: string;
@@ -5,6 +7,8 @@ export type Config = {
   localRefreshHours: number;
   updateIntervalMinutes: number;
   updateBatchSize: number;
+  dryRun: boolean;
+  locale: Locale;
   port: number;
 };
 
@@ -22,6 +26,14 @@ const parseList = (value: string | undefined) => {
     .filter(Boolean);
 };
 
+const parseBoolean = (value: string | undefined, fallback: boolean) => {
+  if (!value) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+};
+
 export const loadConfig = (): Config => {
   return {
     dataDir: process.env.DATA_DIR ?? "/data",
@@ -30,6 +42,8 @@ export const loadConfig = (): Config => {
     localRefreshHours: parseNumber(process.env.LOCAL_REFRESH_HOURS, 6),
     updateIntervalMinutes: parseNumber(process.env.UPDATE_INTERVAL_MINUTES, 30),
     updateBatchSize: parseNumber(process.env.UPDATE_BATCH_SIZE, 5),
+    dryRun: parseBoolean(process.env.DRY_RUN, false),
+    locale: resolveLocale(process.env.APP_LOCALE ?? process.env.LOCALE),
     port: parseNumber(process.env.PORT, 8080)
   };
 };

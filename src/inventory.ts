@@ -1,4 +1,12 @@
-import { ContainerSnapshot, DockerSnapshot, resolveImageDigest, guessImageRef } from "./docker.js";
+import {
+  ContainerSnapshot,
+  DockerSnapshot,
+  resolveImageDigest,
+  resolveImageDigestByRef,
+  resolveImageLabels,
+  resolveImageLabelsByRef,
+  guessImageRef
+} from "./docker.js";
 import { ComposeService } from "./compose.js";
 import { StoredImage } from "./db.js";
 import { normalizeRepoKey, parseImageRef } from "./util/parseImage.js";
@@ -14,17 +22,27 @@ const matchContainer = (composeImage: string, container: ContainerSnapshot, snap
 
   if (normalizeRepoKey(composeRef) !== normalizeRepoKey(containerRef)) return false;
 
+  if (composeRef.digest) {
+    const containerDigest =
+      cleanDigest(resolveImageDigest(snapshot, container.imageId)) ?? cleanDigest(containerRef.digest);
+    const composeDigest = cleanDigest(composeRef.digest);
+    if (!containerDigest || !composeDigest) return false;
+    return containerDigest === composeDigest;
+  }
+
   if (composeRef.tag && containerRef.tag && composeRef.tag !== containerRef.tag) return false;
   if (composeRef.tag && !containerRef.tag) return false;
 
-  if (composeRef.digest) {
-    const containerDigest = cleanDigest(resolveImageDigest(snapshot, container.imageId));
-    const composeDigest = cleanDigest(composeRef.digest);
-    if (!containerDigest || !composeDigest) return false;
-    if (!containerDigest.endsWith(composeDigest) && !composeDigest.endsWith(containerDigest)) return false;
-  }
-
   return true;
+};
+
+const matchByComposeLabels = (service: ComposeService, container: ContainerSnapshot) => {
+  const serviceLabel = container.labels["com.docker.compose.service"];
+  if (!serviceLabel || serviceLabel !== service.service) return false;
+
+  const projectLabel = container.labels["com.docker.compose.project"];
+  if (!projectLabel) return true;
+  return projectLabel === service.stack;
 };
 
 const statusFromContainers = (containers: ContainerSnapshot[]) => {
@@ -34,8 +52,16 @@ const statusFromContainers = (containers: ContainerSnapshot[]) => {
   return "unknown" as const;
 };
 
-const makeId = (repoKey: string, tag: string | null, digest: string | null, stack: string | null, service: string | null) => {
-  return [repoKey, tag ?? "", digest ?? "", stack ?? "", service ?? ""].join("|");
+const makeId = (repoKey: string, tag: string | null, stack: string | null, service: string | null) => {
+  return [repoKey, tag ?? "", stack ?? "", service ?? ""].join("|");
+};
+
+const getLabelValue = (labels: Record<string, string>, key: string) => {
+  const wanted = key.toLowerCase();
+  for (const [labelKey, labelValue] of Object.entries(labels)) {
+    if (labelKey.toLowerCase() === wanted) return labelValue;
+  }
+  return null;
 };
 
 export const buildInventory = (
@@ -47,28 +73,49 @@ export const buildInventory = (
   const inventory: StoredImage[] = [];
 
   for (const service of composeServices) {
-    const composeRef = parseImageRef(service.image);
-    const repoKey = normalizeRepoKey(composeRef);
-    const matches = snapshot.containers.filter((container) => matchContainer(service.image, container, snapshot));
+    const matches = snapshot.containers.filter((container) => {
+      if (service.image) {
+        return matchContainer(service.image, container, snapshot) || matchByComposeLabels(service, container);
+      }
+      return matchByComposeLabels(service, container);
+    });
     matches.forEach((container) => usedContainers.add(container.id));
+    const sourceRef = service.image
+      ? parseImageRef(service.image)
+      : matches[0]
+        ? guessImageRef(snapshot, matches[0].imageId, matches[0].image)
+        : null;
+    if (!sourceRef) continue;
 
-    const digest = matches[0] ? resolveImageDigest(snapshot, matches[0].imageId) : composeRef.digest;
-    const id = makeId(repoKey, composeRef.tag, digest, service.stack, service.service);
+    const repoKey = normalizeRepoKey(sourceRef);
+    const digest =
+      (matches[0] ? resolveImageDigest(snapshot, matches[0].imageId) : null) ??
+      resolveImageDigestByRef(snapshot, sourceRef.raw);
+    const labels =
+      (matches[0] ? resolveImageLabels(snapshot, matches[0].imageId) : null) ??
+      resolveImageLabelsByRef(snapshot, sourceRef.raw);
+    const id = makeId(repoKey, sourceRef.tag, service.stack, service.service);
 
     inventory.push({
       id,
-      repo: composeRef.repository,
-      registry: composeRef.registry ?? "docker.io",
-      tag: composeRef.tag,
+      repo: sourceRef.repository,
+      registry: sourceRef.registry ?? "docker.io",
+      tag: sourceRef.tag,
       digest: digest,
-      displayName: `${composeRef.registry ? composeRef.registry + "/" : ""}${composeRef.repository}`,
+      displayName: `${sourceRef.registry ? sourceRef.registry + "/" : ""}${sourceRef.repository}`,
       source: "compose",
       stack: service.stack,
       composeFile: service.composeFile,
       service: service.service,
+      containerName: service.containerName,
+      declaredDigest: sourceRef.digest ?? null,
+      imageUrl: getLabelValue(labels, "org.opencontainers.image.url"),
+      sourceUrl: getLabelValue(labels, "org.opencontainers.image.source"),
+      changelogUrl: getLabelValue(labels, "dockge.imageupdates.changelog"),
       status: statusFromContainers(matches),
       lastSeen: now,
       lastUpdateCheck: null,
+      lastUpdatedAt: null,
       updateAvailable: null,
       updateMessage: null
     });
@@ -88,7 +135,8 @@ export const buildInventory = (
     const sample = containers[0];
     const ref = guessImageRef(snapshot, sample.imageId, sample.image);
     const digest = resolveImageDigest(snapshot, sample.imageId);
-    const id = makeId(normalizeRepoKey(ref), ref.tag, digest, null, null);
+    const labels = resolveImageLabels(snapshot, sample.imageId);
+    const id = makeId(normalizeRepoKey(ref), ref.tag, null, null);
     inventory.push({
       id,
       repo: ref.repository,
@@ -100,9 +148,15 @@ export const buildInventory = (
       stack: null,
       composeFile: null,
       service: null,
+      containerName: null,
+      declaredDigest: null,
+      imageUrl: getLabelValue(labels, "org.opencontainers.image.url"),
+      sourceUrl: getLabelValue(labels, "org.opencontainers.image.source"),
+      changelogUrl: getLabelValue(labels, "dockge.imageupdates.changelog"),
       status: statusFromContainers(containers),
       lastSeen: now,
       lastUpdateCheck: null,
+      lastUpdatedAt: null,
       updateAvailable: null,
       updateMessage: null
     });

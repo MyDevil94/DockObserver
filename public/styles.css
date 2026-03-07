@@ -33,6 +33,7 @@ body {
 }
 
 .hero {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 24px;
@@ -43,6 +44,12 @@ body {
   border-radius: 20px;
   padding: 28px 30px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.locale-switch {
+  position: absolute;
+  top: 16px;
+  right: 16px;
 }
 
 .eyebrow {
@@ -67,6 +74,21 @@ h1 {
 .actions {
   display: flex;
   gap: 12px;
+}
+
+#localeSelect {
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 10px 12px;
+  background: #0f1a24;
+  color: #e7eef6;
+  font-weight: 600;
+  line-height: 1;
+}
+
+#localeSelect option {
+  background: #0f1a24;
+  color: #e7eef6;
 }
 
 button {
@@ -108,6 +130,7 @@ button:disabled {
   border: 1px solid var(--card-border);
   border-radius: 18px;
   padding: 20px;
+  position: relative;
 }
 
 .group header {
@@ -133,6 +156,12 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.update-btn {
+  border: 1px solid rgba(247, 185, 85, 0.45);
+  color: #ffe3ad;
+  background: rgba(247, 185, 85, 0.12);
+}
+
 .image-list {
   display: grid;
   gap: 12px;
@@ -144,6 +173,7 @@ button:disabled {
   padding: 14px 16px;
   display: grid;
   gap: 8px;
+  position: relative;
 }
 
 .image-card.update {
@@ -159,7 +189,30 @@ button:disabled {
   align-items: center;
 }
 
+.image-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .image-name {
+  font-weight: 600;
+}
+
+.image-info-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.info-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(155, 176, 199, 0.12);
+  border: 1px solid rgba(155, 176, 199, 0.35);
+  color: #c7d6e6;
+  font-size: 0.72rem;
   font-weight: 600;
 }
 
@@ -186,6 +239,16 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.update-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(247, 185, 85, 0.18);
+  border: 1px solid rgba(247, 185, 85, 0.55);
+  color: #ffdc9a;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .status-dot {
@@ -219,6 +282,14 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.image-actions a.update-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 185, 85, 0.45);
+  color: #ffe3ad;
+  background: rgba(247, 185, 85, 0.12);
+}
+
 .image-actions button {
   padding: 6px 12px;
   font-size: 0.75rem;
@@ -227,7 +298,187 @@ button:disabled {
   color: var(--text);
 }
 
+.image-meta a {
+  color: #9ecfff;
+  text-decoration: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 30;
+}
+
+.hidden {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal-card {
+  position: relative;
+  width: min(640px, calc(100% - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  background: #0f1822;
+  border: 1px solid #304051;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
+}
+
+.modal-card h2 {
+  margin: 0;
+}
+
+.modal-text {
+  margin: 10px 0 12px;
+  color: var(--muted);
+}
+
+.modal-items {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.modal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  border: 1px solid #23303d;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.modal-prune {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgba(6, 12, 18, 0.7);
+  border-radius: inherit;
+  display: grid;
+  place-items: center;
+}
+
+.busy-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(10, 22, 31, 0.9);
+  color: #d9f8ea;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.busy-btn strong {
+  font-size: 0.9rem;
+  z-index: 1;
+}
+
+.busy-btn .busy-ring {
+  position: absolute;
+  inset: 4px;
+  border: 2px dotted rgba(77, 230, 164, 0.8);
+  border-radius: 50%;
+  animation: spin 2.6s linear infinite;
+}
+
+.busy-btn span {
+  z-index: 1;
+}
+
+.console-card {
+  width: min(920px, calc(100% - 32px));
+}
+
+.console-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.console-tabs {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.console-tab {
+  border: 1px solid #2c3a49;
+  border-radius: 999px;
+  background: transparent;
+  color: #d7e2ee;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+}
+
+.console-tab.active {
+  border-color: #4de6a4;
+  color: #4de6a4;
+}
+
+.console-output {
+  margin: 12px 0 0;
+  background: #091018;
+  border: 1px solid #1a2a3a;
+  border-radius: 10px;
+  min-height: 320px;
+  max-height: 56dvh;
+  overflow: auto;
+  padding: 12px;
+  color: #bcd0e4;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 720px) {
+  .locale-switch {
+    position: static;
+    align-self: flex-end;
+  }
   .hero {
     flex-direction: column;
     align-items: flex-start;

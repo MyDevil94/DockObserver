@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isLocale, Locale } from "./i18n.js";
 
 export type StoredImage = {
   id: string;
@@ -12,9 +13,15 @@ export type StoredImage = {
   stack: string | null;
   composeFile: string | null;
   service: string | null;
+  containerName: string | null;
+  declaredDigest: string | null;
+  imageUrl: string | null;
+  sourceUrl: string | null;
+  changelogUrl: string | null;
   status: "running" | "stopped" | "paused" | "unknown";
   lastSeen: string;
   lastUpdateCheck: string | null;
+  lastUpdatedAt: string | null;
   updateAvailable: boolean | null;
   updateMessage: string | null;
 };
@@ -22,11 +29,19 @@ export type StoredImage = {
 export type DbState = {
   images: StoredImage[];
   lastRefresh: string | null;
+  lastAutomaticCheck: string | null;
+  settings: {
+    locale: Locale;
+  };
 };
 
 const defaultState: DbState = {
   images: [],
-  lastRefresh: null
+  lastRefresh: null,
+  lastAutomaticCheck: null,
+  settings: {
+    locale: "de"
+  }
 };
 
 export class Db {
@@ -43,7 +58,11 @@ export class Db {
       const parsed = JSON.parse(raw) as DbState;
       this.state = {
         images: parsed.images ?? [],
-        lastRefresh: parsed.lastRefresh ?? null
+        lastRefresh: parsed.lastRefresh ?? null,
+        lastAutomaticCheck: parsed.lastAutomaticCheck ?? null,
+        settings: {
+          locale: isLocale(parsed.settings?.locale ?? "") ? parsed.settings.locale : defaultState.settings.locale
+        }
       };
     } catch (err) {
       this.state = defaultState;
