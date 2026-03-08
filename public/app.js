@@ -201,10 +201,12 @@ const groupImages = (images) => {
   return grouped;
 };
 
+const API_INTERNAL_HEADERS = { "X-DockObserver-Internal": "web-ui" };
+
 const postJson = async (url, body) => {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...API_INTERNAL_HEADERS, "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -212,12 +214,12 @@ const postJson = async (url, body) => {
 };
 
 const fetchState = async () => {
-  const res = await fetch("/api/state");
+  const res = await fetch("/api/state", { headers: API_INTERNAL_HEADERS });
   appState = await res.json();
 };
 
 const fetchJobs = async () => {
-  const res = await fetch("/api/update-jobs");
+  const res = await fetch("/api/update-jobs", { headers: API_INTERNAL_HEADERS });
   const data = await res.json();
   jobsState = data.jobs ?? [];
 };

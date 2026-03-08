@@ -4,9 +4,9 @@ export const isLocale = (value: string): value is Locale => value === "de" || va
 export const SUPPORTED_LOCALES: Locale[] = ["de", "en"];
 
 export const resolveLocale = (value: string | undefined): Locale => {
-  if (!value) return "de";
+  if (!value) return "en";
   const normalized = value.trim().toLowerCase().split(/[-_]/)[0];
-  return isLocale(normalized) ? normalized : "de";
+  return isLocale(normalized) ? normalized : "en";
 };
 
 const MESSAGES = {

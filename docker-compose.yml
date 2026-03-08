@@ -15,7 +15,7 @@ services:
       - UPDATE_INTERVAL_MINUTES=30
       - UPDATE_BATCH_SIZE=5
       - DRY_RUN=false
-      - APP_LOCALE=de
+      - APP_LOCALE=en
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data

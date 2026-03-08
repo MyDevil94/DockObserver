@@ -12,6 +12,8 @@ import { isLocale, Locale, t } from "./i18n.js";
 
 const config = loadConfig();
 const db = new Db(config.dataDir);
+const INTERNAL_API_HEADER = "x-dockobserver-internal";
+const INTERNAL_API_HEADER_VALUE = "web-ui";
 
 type JobStatus = "running" | "success" | "failed";
 type UpdateJobKind = "group" | "image";
@@ -228,6 +230,14 @@ const runUnmanagedUpdate = async (jobId: string, image: StoredImage, pruneAfterU
   }
 };
 
+const refreshAfterUpdate = async (jobId: string) => {
+  if (config.dryRun) {
+    appendJobLog(jobId, "DRY_RUN=true, inventory refresh skipped.");
+    return;
+  }
+  await runRefreshExclusive();
+};
+
 const logUpdateCheck = (origin: "manual" | "automatic", line: string) => {
   const locale = getLocale();
   const originLabel =
@@ -417,6 +427,14 @@ const start = async () => {
   const app = express();
   app.use(express.json());
   app.use(express.static(path.join(process.cwd(), "public")));
+  app.use("/api", (req, res, next) => {
+    const internalHeader = req.header(INTERNAL_API_HEADER);
+    if (internalHeader !== INTERNAL_API_HEADER_VALUE) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    next();
+  });
 
   app.get("/api/state", (_req, res) => {
     res.json(stateForApi());
@@ -514,7 +532,7 @@ const start = async () => {
           targets.map((item) => item.id),
           config.dryRun ? "dry-run update simulated" : "update executed"
         );
-        await runRefreshExclusive();
+        await refreshAfterUpdate(job.id);
         appendJobLog(job.id, "update finished successfully");
         finishJob(job.id, "success");
       } catch (err) {
@@ -549,7 +567,7 @@ const start = async () => {
       try {
         await runUnmanagedUpdate(job.id, image, pruneAfterUpdate);
         await applyUpdateSuccess([id], config.dryRun ? "dry-run update simulated" : "update executed");
-        await runRefreshExclusive();
+        await refreshAfterUpdate(job.id);
         appendJobLog(job.id, "update finished successfully");
         finishJob(job.id, "success");
       } catch (err) {
