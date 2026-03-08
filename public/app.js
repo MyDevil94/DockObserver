@@ -20,8 +20,6 @@ const consoleBackdropEl = document.getElementById("consoleBackdrop");
 const consoleCloseEl = document.getElementById("consoleClose");
 const consoleTabsEl = document.getElementById("consoleTabs");
 const consoleOutputEl = document.getElementById("consoleOutput");
-const heroTitleEl = document.getElementById("heroTitle");
-const heroSubtitleEl = document.getElementById("heroSubtitle");
 const modalPruneLabelEl = document.getElementById("modalPruneLabel");
 const consoleTitleEl = document.getElementById("consoleTitle");
 
@@ -32,8 +30,6 @@ let consoleState = { open: false, selectedJobId: null };
 
 const I18N = {
   de: {
-    heroTitle: "Container Updates im Blick",
-    heroSubtitle: "Socket + Compose scan, kompakte Status-Ansicht, gezielte Update-Checks.",
     refresh: "Lokal neu einlesen",
     batchCheck: "Batch Update-Check",
     lastLocalScan: "Letzter lokaler Scan: {value}",
@@ -79,8 +75,6 @@ const I18N = {
     scopeImage: "Image"
   },
   en: {
-    heroTitle: "Container Updates at a Glance",
-    heroSubtitle: "Socket + Compose scan, compact status view, targeted update checks.",
     refresh: "Rescan Local",
     batchCheck: "Batch Update Check",
     lastLocalScan: "Last local scan: {value}",
@@ -337,8 +331,6 @@ const createBusyOverlay = (jobs, scopeLabel) => {
 const applyStaticTexts = () => {
   document.documentElement.lang = currentLocale();
   localeSelectEl.value = currentLocale();
-  heroTitleEl.textContent = t("heroTitle");
-  heroSubtitleEl.textContent = t("heroSubtitle");
   refreshBtn.textContent = t("refresh");
   batchBtn.textContent = t("batchCheck");
   modalPruneLabelEl.lastChild.textContent = ` ${t("pruneLabel")}`;

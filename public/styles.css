@@ -33,12 +33,13 @@ body {
 }
 
 .hero {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "copy locale"
+    "copy actions";
   gap: 24px;
   align-items: center;
-  justify-content: space-between;
   background: linear-gradient(120deg, #0d1822, #122533);
   border: 1px solid var(--card-border);
   border-radius: 20px;
@@ -46,18 +47,23 @@ body {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
 }
 
+.hero-copy {
+  grid-area: copy;
+}
+
 .locale-switch {
-  position: absolute;
-  top: 16px;
-  right: 16px;
+  grid-area: locale;
+  justify-self: end;
 }
 
 .eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 0.7rem;
-  color: var(--muted);
-  margin: 0 0 6px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: clamp(2rem, 4.5vw, 3rem);
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--text);
+  margin: 0;
 }
 
 h1 {
@@ -72,6 +78,8 @@ h1 {
 }
 
 .actions {
+  grid-area: actions;
+  justify-self: end;
   display: flex;
   gap: 12px;
 }
@@ -475,16 +483,21 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
-  .locale-switch {
-    position: static;
-    align-self: flex-end;
-  }
   .hero {
-    flex-direction: column;
-    align-items: flex-start;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "locale"
+      "copy"
+      "actions";
+    align-items: stretch;
+    gap: 16px;
+  }
+  .locale-switch {
+    justify-self: end;
   }
   .actions {
     width: 100%;
+    justify-self: stretch;
   }
   button {
     flex: 1;
