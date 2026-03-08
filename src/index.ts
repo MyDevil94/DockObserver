@@ -30,6 +30,29 @@ type UpdateJob = {
 const jobs = new Map<string, UpdateJob>();
 const MAX_JOB_LOG_LINES = 1000;
 const MAX_JOB_HISTORY = 50;
+let refreshInFlight: Promise<void> | null = null;
+let updatesInFlight: Promise<void> | null = null;
+
+const pruneJobs = () => {
+  if (jobs.size <= MAX_JOB_HISTORY) return;
+
+  const oldestFirst = Array.from(jobs.values()).sort(
+    (a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt)
+  );
+
+  for (const job of oldestFirst) {
+    if (jobs.size <= MAX_JOB_HISTORY) break;
+    if (job.status !== "running") jobs.delete(job.id);
+  }
+
+  // Fallback: cap hard even if many jobs are still running.
+  if (jobs.size > MAX_JOB_HISTORY) {
+    for (const job of oldestFirst) {
+      if (jobs.size <= MAX_JOB_HISTORY) break;
+      jobs.delete(job.id);
+    }
+  }
+};
 
 const getLocale = (): Locale => {
   const locale = db.getState().settings?.locale;
@@ -54,6 +77,7 @@ const createJob = (kind: UpdateJobKind, title: string, imageIds: string[]) => {
     logs: []
   };
   jobs.set(id, job);
+  pruneJobs();
   return job;
 };
 
@@ -72,6 +96,7 @@ const finishJob = (jobId: string, status: JobStatus) => {
   if (!job) return;
   job.status = status;
   job.endedAt = new Date().toISOString();
+  pruneJobs();
 };
 
 const runCommandStreaming = async (jobId: string, cmd: string, args: string[]) => {
@@ -313,6 +338,32 @@ const refreshInventory = async () => {
   await db.save();
 };
 
+const runRefreshExclusive = async () => {
+  if (refreshInFlight) return refreshInFlight;
+  const run = (async () => {
+    await refreshInventory();
+  })();
+  refreshInFlight = run;
+  try {
+    await run;
+  } finally {
+    if (refreshInFlight === run) refreshInFlight = null;
+  }
+};
+
+const runUpdatesExclusive = async (fn: () => Promise<void>) => {
+  while (updatesInFlight) {
+    await updatesInFlight;
+  }
+  const run = fn();
+  updatesInFlight = run;
+  try {
+    await run;
+  } finally {
+    if (updatesInFlight === run) updatesInFlight = null;
+  }
+};
+
 const checkUpdatesBatch = async (limit: number, origin: "manual" | "automatic") => {
   const state = db.getState();
   const targets = pickNextImages(state.images, limit);
@@ -359,7 +410,7 @@ const start = async () => {
     await db.save();
   }
 
-  await refreshInventory();
+  await runRefreshExclusive();
 
   const stateForApi = () => ({ ...db.getState(), locale: getLocale() });
 
@@ -395,7 +446,7 @@ const start = async () => {
 
   app.post("/api/refresh", async (_req, res) => {
     try {
-      await refreshInventory();
+      await runRefreshExclusive();
       res.json(stateForApi());
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : "refresh failed" });
@@ -405,7 +456,9 @@ const start = async () => {
   app.post("/api/check-updates", async (req, res) => {
     const limit = Number(req.body?.limit ?? config.updateBatchSize);
     try {
-      await checkUpdatesBatch(Number.isFinite(limit) ? limit : config.updateBatchSize, "manual");
+      await runUpdatesExclusive(() =>
+        checkUpdatesBatch(Number.isFinite(limit) ? limit : config.updateBatchSize, "manual")
+      );
       res.json(stateForApi());
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : "update check failed" });
@@ -419,7 +472,7 @@ const start = async () => {
       return;
     }
     try {
-      await checkUpdatesForIds([id], "manual");
+      await runUpdatesExclusive(() => checkUpdatesForIds([id], "manual"));
       res.json(stateForApi());
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : "update check failed" });
@@ -461,7 +514,7 @@ const start = async () => {
           targets.map((item) => item.id),
           config.dryRun ? "dry-run update simulated" : "update executed"
         );
-        await refreshInventory();
+        await runRefreshExclusive();
         appendJobLog(job.id, "update finished successfully");
         finishJob(job.id, "success");
       } catch (err) {
@@ -496,7 +549,7 @@ const start = async () => {
       try {
         await runUnmanagedUpdate(job.id, image, pruneAfterUpdate);
         await applyUpdateSuccess([id], config.dryRun ? "dry-run update simulated" : "update executed");
-        await refreshInventory();
+        await runRefreshExclusive();
         appendJobLog(job.id, "update finished successfully");
         finishJob(job.id, "success");
       } catch (err) {
@@ -513,11 +566,19 @@ const start = async () => {
   });
 
   setInterval(() => {
-    refreshInventory().catch((err) => console.error("refresh failed", err));
+    if (refreshInFlight) {
+      console.log("refresh skipped: previous run still active");
+      return;
+    }
+    runRefreshExclusive().catch((err) => console.error("refresh failed", err));
   }, config.localRefreshHours * 60 * 60 * 1000);
 
   setInterval(() => {
-    checkUpdatesBatch(config.updateBatchSize, "automatic").catch((err) =>
+    if (updatesInFlight) {
+      console.log("update check skipped: previous run still active");
+      return;
+    }
+    runUpdatesExclusive(() => checkUpdatesBatch(config.updateBatchSize, "automatic")).catch((err) =>
       console.error("update check failed", err)
     );
   }, config.updateIntervalMinutes * 60 * 1000);

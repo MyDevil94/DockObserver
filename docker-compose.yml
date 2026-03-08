@@ -2,6 +2,9 @@ services:
   dockobserver:
     image: ghcr.io/mydevil94/dockobserver:latest
     container_name: dockobserver
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 4s
     ports:
       - "8080:8080"
     environment:
@@ -17,3 +20,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
       - /opt/stacks/:/stacks:ro
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

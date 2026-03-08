@@ -6,6 +6,22 @@ export type RegistryCheckResult = {
 };
 
 const DOCKER_HUB_REGISTRY = "registry-1.docker.io";
+const DEFAULT_TIMEOUT_MS = 15000;
+
+const resolveTimeoutMs = () => {
+  const raw = Number(process.env.REGISTRY_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
+};
+
+const fetchWithTimeout = async (url: string, init?: RequestInit) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), resolveTimeoutMs());
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 const ensureDockerHubRepo = (repository: string) => {
   if (repository.includes("/")) return repository;
@@ -14,7 +30,7 @@ const ensureDockerHubRepo = (repository: string) => {
 
 const getDockerHubToken = async (repo: string) => {
   const url = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) {
     throw new Error(`auth ${res.status}`);
   }
@@ -54,7 +70,7 @@ const getBearerToken = async (challenge: BearerChallenge, fallbackScope: string)
   const tokenUrl = new URL(challenge.realm);
   if (challenge.service) tokenUrl.searchParams.set("service", challenge.service);
   tokenUrl.searchParams.set("scope", challenge.scope ?? fallbackScope);
-  const res = await fetch(tokenUrl.toString());
+  const res = await fetchWithTimeout(tokenUrl.toString());
   if (!res.ok) {
     throw new Error(`auth ${res.status}`);
   }
@@ -85,7 +101,7 @@ export const getRemoteDigest = async (image: ImageRef): Promise<RegistryCheckRes
   }
 
   const url = `https://${registryHost}/v2/${repo}/manifests/${tag}`;
-  let res = await fetch(url, { method: "HEAD", headers });
+  let res = await fetchWithTimeout(url, { method: "HEAD", headers });
 
   if (res.status === 401 && registry !== "docker.io") {
     const challenge = parseBearerChallenge(res.headers.get("www-authenticate"));
@@ -93,7 +109,7 @@ export const getRemoteDigest = async (image: ImageRef): Promise<RegistryCheckRes
       try {
         const fallbackScope = `repository:${repo}:pull`;
         const token = await getBearerToken(challenge, fallbackScope);
-        res = await fetch(url, {
+        res = await fetchWithTimeout(url, {
           method: "HEAD",
           headers: {
             ...headers,
@@ -111,7 +127,7 @@ export const getRemoteDigest = async (image: ImageRef): Promise<RegistryCheckRes
 
   if ((!res.ok || !res.headers.get("docker-content-digest")) && (res.status === 404 || res.status === 405 || res.ok)) {
     // Some registries/tags return digest only reliably on GET.
-    res = await fetch(url, { method: "GET", headers });
+    res = await fetchWithTimeout(url, { method: "GET", headers });
   }
 
   if (!res.ok) {

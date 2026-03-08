@@ -12,16 +12,16 @@ export const resolveLocale = (value: string | undefined): Locale => {
 const MESSAGES = {
   de: {
     updateCheckPrefix: "[update-check]",
-    startChecks: "starte pruefung fuer {count} image(s)",
-    checkingImage: "pruefe image {image}...",
+    startChecks: "starte Prüfung für {count} image(s)",
+    checkingImage: "prüfe image {image}...",
     originManual: "manuell",
     originAutomatic: "automatisch",
-    resultUpdate: "update verfuegbar",
+    resultUpdate: "update verfügbar",
     resultNoUpdate: "kein update",
     resultUnknown: "status unbekannt",
     resultLine: "{image} -> {result}{detail}",
     dryRunSuffix: " (dry-run)",
-    listening: "DockObserver laeuft auf Port {port}"
+    listening: "DockObserver läuft auf Port {port}"
   },
   en: {
     updateCheckPrefix: "[update-check]",
