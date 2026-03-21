@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 4s
+    env_file:
+      - .env
     ports:
       - "8080:8080"
     environment:
@@ -13,7 +15,6 @@ services:
       - LOCAL_REFRESH_HOURS=6
       - UPDATE_INTERVAL_MINUTES=30
       - UPDATE_BATCH_SIZE=5
-      - NO_WEB_UPDATE_STACK_PATHS=
       - DRY_RUN=false
       - APP_LOCALE=en
     volumes:
