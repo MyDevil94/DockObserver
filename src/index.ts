@@ -7,8 +7,9 @@ import { Db, StoredImage } from "./db.js";
 import { findComposeFiles, loadComposeServices } from "./compose.js";
 import { guessImageRef, loadCurrentContainerMounts, loadDockerSnapshot } from "./docker.js";
 import { buildInventory } from "./inventory.js";
+import { sendUpdateNotifications } from "./notifications.js";
 import { checkImageUpdate, checkImagesDryRun, mergeUpdates, pickNextImages } from "./updater.js";
-import { isLocale, Locale, t } from "./i18n.js";
+import { isLocale, LOCALE_LABELS, Locale, SUPPORTED_LOCALES, t } from "./i18n.js";
 import { normalizeRepoKey } from "./util/parseImage.js";
 
 const config = loadConfig();
@@ -477,23 +478,33 @@ const checkUpdatesBatch = async (limit: number, origin: "manual" | "automatic") 
   }
 
   const updates = await runUpdateChecks(targets, origin);
+  const newlyAvailable = updates.filter((update) => {
+    const previous = state.images.find((image) => image.id === update.id);
+    return update.updateAvailable === true && previous?.updateAvailable !== true;
+  });
   db.setState({
     ...state,
     lastAutomaticCheck: origin === "automatic" ? now : state.lastAutomaticCheck,
     images: mergeUpdates(state.images, updates)
   });
   await db.save();
+  await sendUpdateNotifications(config, getLocale(), newlyAvailable);
 };
 
 const checkUpdatesForIds = async (ids: string[], origin: "manual" | "automatic") => {
   const state = db.getState();
   const targets = state.images.filter((image) => ids.includes(image.id));
   const updates = await runUpdateChecks(targets, origin);
+  const newlyAvailable = updates.filter((update) => {
+    const previous = state.images.find((image) => image.id === update.id);
+    return update.updateAvailable === true && previous?.updateAvailable !== true;
+  });
   db.setState({
     ...state,
     images: mergeUpdates(state.images, updates)
   });
   await db.save();
+  await sendUpdateNotifications(config, getLocale(), newlyAvailable);
 };
 
 const start = async () => {
@@ -511,7 +522,14 @@ const start = async () => {
 
   await runRefreshExclusive();
 
-  const stateForApi = () => ({ ...db.getState(), locale: getLocale() });
+  const stateForApi = () => ({
+    ...db.getState(),
+    locale: getLocale(),
+    supportedLocales: SUPPORTED_LOCALES.map((code) => ({
+      code,
+      label: LOCALE_LABELS[code]
+    }))
+  });
 
   const app = express();
   app.use(express.json());

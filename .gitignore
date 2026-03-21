@@ -8,5 +8,4 @@ Thumbs.db
 *.log
 
 .env
-.env.*
 coverage

@@ -17,6 +17,7 @@ A lightweight container that scans local Docker containers and Compose stacks, a
 
 ## Start (Docker)
 ```bash
+cp .env.example .env
 docker compose up -d
 ```
 
@@ -27,6 +28,8 @@ docker compose up -d
 - `UPDATE_INTERVAL_MINUTES` (default `30`)
 - `UPDATE_BATCH_SIZE` (default `5`)
 - `NO_WEB_UPDATE_STACK_PATHS` (default empty, comma-separated stack directory paths). Matching Compose stacks are still checked for updates, but no update button is shown in the Web UI and `/api/update-group` is blocked for them.
+- `GOTIFY_URL` + `GOTIFY_TOKEN` enable Gotify notifications for newly detected updates
+- `NTFY_URL` + `NTFY_TOPIC` enable ntfy notifications for newly detected updates
 - `DRY_RUN` (default `false`) -> when `true`, no registry requests are made; each check randomly marks 0-2 images as dummy updates; update actions run as successful dummy runs (without `docker pull`/`docker compose up`)
 - `APP_LOCALE` (default `en`, values: `de` or `en`) for Web UI text and update-check logs (`docker compose logs -f`)
 - `PORT` (default `8080`)
@@ -40,9 +43,12 @@ docker compose up -d
 - DockObserver derives Compose stack roots automatically from its own bind mounts, excluding `DATA_DIR` and `DOCKER_SOCKET`.
 - Only bind mounts with identical `source:target` paths are treated as stack roots. Example: `/opt/stacks:/opt/stacks`.
 - `NO_WEB_UPDATE_STACK_PATHS` matches stack directories, for example `/opt/stacks/dockobserver,/opt/stacks/reverse-proxy`.
+- Notifications are sent only on the first detection of an update, not on every later batch scan while the update remains available.
+- If configured, Gotify and ntfy are both notified.
+- Notification text is localized based on `APP_LOCALE`.
+- Changelog links are derived from `org.opencontainers.image.source` when it points to a GitHub repository and are appended to notifications when available.
 - Update checks compare the remote digest for the configured tag (without pulling during checks).
 - For digest-pinned Compose images, checks follow Compose semantics: no tag tracking, only validation whether the pinned digest is present/changed locally.
 - Compose updates run via `docker compose -f <compose> up --pull always -d`.
 - Unmanaged updates run via `docker pull <image:tag>`.
 - The runtime image includes `docker` + `docker compose` CLI for update operations.
-- Changelog links are derived from `org.opencontainers.image.source` when it points to a GitHub repository.

@@ -24,114 +24,35 @@ const consoleOutputEl = document.getElementById("consoleOutput");
 const modalPruneLabelEl = document.getElementById("modalPruneLabel");
 const consoleTitleEl = document.getElementById("consoleTitle");
 
-let appState = { images: [], lastRefresh: null, lastAutomaticCheck: null, locale: "de" };
+let appState = { images: [], lastRefresh: null, lastAutomaticCheck: null, locale: "en", supportedLocales: [] };
 let jobsState = [];
 let modalState = null;
 let consoleState = { open: false, selectedJobId: null };
+const localeCache = new Map();
+let localeMessages = {};
+let fallbackMessages = {};
 
-const I18N = {
-  de: {
-    refresh: "Lokal neu einlesen",
-    batchCheck: "Batch Update-Check",
-    lastLocalScan: "Letzter lokaler Scan: {value}",
-    lastAutomaticCheck: "Letzter automatischer Check: {value}",
-    imagesCount: "{count} Images",
-    unmanaged: "Unmanaged",
-    compose: "Compose",
-    checkUpdates: "Auf Update prüfen",
-    startAction: "Start",
-    stopAction: "Stop",
-    runUpdate: "Update ausführen",
-    updateForGroup: "Update für Gruppe {name}",
-    groupUpdateText: "Folgende Services haben ein Update. Auswahl optional anpassen.",
-    updateChip: "Update",
-    imageLabel: "Image: {name}",
-    tagLabel: "Tag: {value}",
-    digestLabel: "Digest: {value}",
-    lastCheck: "Letzter Check: {value}",
-    lastUpdated: "Zuletzt aktualisiert: {value}",
-    chipLastCheck: "Letzter Check: {value}",
-    chipLastUpdated: "Zuletzt aktualisiert: {value}",
-    checkNow: "Jetzt prüfen",
-    unmanagedUpdateTitle: "Unmanaged Image updaten",
-    unmanagedUpdateText: "Das Image wird per docker pull aktualisiert.",
-    url: "URL",
-    code: "Code",
-    changelog: "Changelog",
-    chooseOne: "Bitte mindestens einen Eintrag auswählen.",
-    updateFailed: "Update fehlgeschlagen",
-    checkFailed: "Check fehlgeschlagen",
-    confirmUpdate: "Update bestätigen",
-    pruneLabel: "Image prune nach Update ausführen (`docker image prune -af`)",
-    cancel: "Abbrechen",
-    startUpdate: "Update starten",
-    updateConsole: "Job Konsole",
-    close: "Schließen",
-    noJobs: "Keine Jobs.",
-    running: "running {seconds}s",
-    job: "Job: {value}",
-    status: "Status: {value}",
-    start: "Start: {value}",
-    end: "Ende: {value}",
-    busyTitle: "Job läuft ({scope}). Konsole öffnen",
-    scopeGroup: "Gruppe",
-    scopeImage: "Image"
-  },
-  en: {
-    refresh: "Rescan Local",
-    batchCheck: "Batch Update Check",
-    lastLocalScan: "Last local scan: {value}",
-    lastAutomaticCheck: "Last automatic check: {value}",
-    imagesCount: "{count} images",
-    unmanaged: "Unmanaged",
-    compose: "Compose",
-    checkUpdates: "Check for updates",
-    startAction: "Start",
-    stopAction: "Stop",
-    runUpdate: "Run update",
-    updateForGroup: "Update group {name}",
-    groupUpdateText: "The following services have updates. You can adjust selection.",
-    updateChip: "Update",
-    imageLabel: "Image: {name}",
-    tagLabel: "Tag: {value}",
-    digestLabel: "Digest: {value}",
-    lastCheck: "Last check: {value}",
-    lastUpdated: "Last updated: {value}",
-    chipLastCheck: "Last check: {value}",
-    chipLastUpdated: "Last updated: {value}",
-    checkNow: "Check now",
-    unmanagedUpdateTitle: "Update unmanaged image",
-    unmanagedUpdateText: "The image will be updated via docker pull.",
-    url: "URL",
-    code: "Code",
-    changelog: "Changelog",
-    chooseOne: "Please select at least one entry.",
-    updateFailed: "Update failed",
-    checkFailed: "Check failed",
-    confirmUpdate: "Confirm update",
-    pruneLabel: "Run image prune after update (`docker image prune -af`)",
-    cancel: "Cancel",
-    startUpdate: "Start update",
-    updateConsole: "Job Console",
-    close: "Close",
-    noJobs: "No jobs.",
-    running: "running {seconds}s",
-    job: "Job: {value}",
-    status: "Status: {value}",
-    start: "Start: {value}",
-    end: "End: {value}",
-    busyTitle: "Job running ({scope}). Open console",
-    scopeGroup: "group",
-    scopeImage: "image"
-  }
+const currentLocale = () => appState.locale || "en";
+
+const loadLocaleFile = async (locale) => {
+  if (localeCache.has(locale)) return localeCache.get(locale);
+  const promise = fetch(`/locales/${locale}.json`)
+    .then((res) => {
+      if (!res.ok) throw new Error(`locale ${locale} failed`);
+      return res.json();
+    })
+    .then((data) => data.messages ?? {});
+  localeCache.set(locale, promise);
+  return promise;
 };
 
-const currentLocale = () => (appState.locale === "en" ? "en" : "de");
+const ensureLocaleMessages = async (locale) => {
+  fallbackMessages = await loadLocaleFile("en");
+  localeMessages = locale === "en" ? fallbackMessages : await loadLocaleFile(locale).catch(() => fallbackMessages);
+};
+
 const t = (key, vars = {}) => {
-  const locale = currentLocale();
-  const table = I18N[locale] ?? I18N.de;
-  const fallback = I18N.de[key] ?? key;
-  const template = table[key] ?? fallback;
+  const template = localeMessages[key] ?? fallbackMessages[key] ?? key;
   return template.replace(/\{([A-Za-z0-9_]+)\}/g, (_m, name) => {
     const value = vars[name];
     return value === undefined ? "" : String(value);
@@ -350,7 +271,16 @@ const createBusyOverlay = (jobs, scopeLabel) => {
 
 const applyStaticTexts = () => {
   document.documentElement.lang = currentLocale();
-  localeSelectEl.value = currentLocale();
+  const locales = Array.isArray(appState.supportedLocales) ? appState.supportedLocales : [];
+  const wanted = currentLocale();
+  localeSelectEl.innerHTML = "";
+  locales.forEach((locale) => {
+    const option = document.createElement("option");
+    option.value = locale.code;
+    option.textContent = locale.label;
+    if (locale.code === wanted) option.selected = true;
+    localeSelectEl.appendChild(option);
+  });
   refreshBtn.textContent = t("refresh");
   batchBtn.textContent = t("batchCheck");
   modalPruneLabelEl.lastChild.textContent = ` ${t("pruneLabel")}`;
@@ -519,7 +449,9 @@ const render = () => {
       const lastUpdatedChip = document.createElement("span");
       lastUpdatedChip.className = "info-chip";
       lastUpdatedChip.textContent = t("chipLastUpdated", { value: formatDate(image.lastUpdatedAt) });
-      infoChips.appendChild(lastUpdatedChip);
+      if (image.lastUpdatedAt) {
+        infoChips.appendChild(lastUpdatedChip);
+      }
 
       nameWrap.appendChild(infoChips);
       top.appendChild(nameWrap);
@@ -746,6 +678,7 @@ consoleBackdropEl.addEventListener("click", closeConsole);
 
 const refreshAll = async () => {
   await Promise.all([fetchState(), fetchJobs()]);
+  await ensureLocaleMessages(currentLocale());
   render();
   renderConsole();
 };
@@ -819,6 +752,7 @@ setInterval(async () => {
     await fetchJobs();
     if (pollTick % 3 === 0) {
       await fetchState();
+      await ensureLocaleMessages(currentLocale());
     }
 
     const nextStateDigest = digestState(appState);

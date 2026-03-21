@@ -4,6 +4,10 @@ export type Config = {
   dataDir: string;
   dockerSocketPath: string;
   noWebUpdateStackPaths: string[];
+  gotifyUrl: string | null;
+  gotifyToken: string | null;
+  ntfyUrl: string | null;
+  ntfyTopic: string | null;
   localRefreshHours: number;
   updateIntervalMinutes: number;
   updateBatchSize: number;
@@ -34,11 +38,20 @@ const parseList = (value: string | undefined) => {
     .filter(Boolean);
 };
 
+const parseString = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+};
+
 export const loadConfig = (): Config => {
   return {
     dataDir: process.env.DATA_DIR ?? "/data",
     dockerSocketPath: process.env.DOCKER_SOCKET ?? "/var/run/docker.sock",
     noWebUpdateStackPaths: parseList(process.env.NO_WEB_UPDATE_STACK_PATHS),
+    gotifyUrl: parseString(process.env.GOTIFY_URL),
+    gotifyToken: parseString(process.env.GOTIFY_TOKEN),
+    ntfyUrl: parseString(process.env.NTFY_URL),
+    ntfyTopic: parseString(process.env.NTFY_TOPIC),
     localRefreshHours: parseNumber(process.env.LOCAL_REFRESH_HOURS, 6),
     updateIntervalMinutes: parseNumber(process.env.UPDATE_INTERVAL_MINUTES, 30),
     updateBatchSize: parseNumber(process.env.UPDATE_BATCH_SIZE, 5),
