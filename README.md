@@ -13,6 +13,7 @@ A lightweight container that scans local Docker containers and Compose stacks, a
 - Shows last local scan and last automatic update check in the Web UI
 - Update action with confirmation modal and optional `docker image prune -af`
 - Asynchronous update jobs with separate live console per operation (parallel-capable)
+- Reads `org.opencontainers.image.*` labels such as `url` and `source` for project/source links in the UI
 
 ## Start (Docker)
 ```bash
@@ -42,3 +43,4 @@ docker compose up -d
 - Compose updates run via `docker compose -f <compose> up --pull always -d`.
 - Unmanaged updates run via `docker pull <image:tag>`.
 - The runtime image includes `docker` + `docker compose` CLI for update operations.
+- Changelog links are derived from `org.opencontainers.image.source` when it points to a GitHub repository.

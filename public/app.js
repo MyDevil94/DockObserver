@@ -167,8 +167,6 @@ const normalizeUrl = (value) => {
 };
 
 const getChangelogUrl = (image) => {
-  const explicit = normalizeUrl(image.changelogUrl);
-  if (explicit) return explicit;
   const source = normalizeUrl(image.sourceUrl);
   if (!source || !source.includes("github.com/")) return null;
   const clean = source.endsWith("/") ? source.slice(0, -1) : source;
@@ -406,6 +404,7 @@ const render = () => {
 
     if (!isUnmanaged && sample?.composeFile) {
       const groupStartBtn = document.createElement("button");
+      groupStartBtn.className = "start-btn";
       groupStartBtn.textContent = t("startAction");
       groupStartBtn.disabled =
         groupBusy || imagesInGroup.every((image) => image.status === "running" || image.status === "paused");
@@ -426,6 +425,7 @@ const render = () => {
       actions.appendChild(groupStartBtn);
 
       const groupStopBtn = document.createElement("button");
+      groupStopBtn.className = "stop-btn";
       groupStopBtn.textContent = t("stopAction");
       groupStopBtn.disabled = groupBusy || imagesInGroup.every((image) => image.status === "stopped");
       groupStopBtn.addEventListener("click", async () => {
@@ -553,6 +553,7 @@ const render = () => {
       actionsEl.appendChild(checkBtn);
 
       const startBtn = document.createElement("button");
+      startBtn.className = "start-btn";
       startBtn.textContent = t("startAction");
       startBtn.disabled = imageBusy || image.status === "running" || image.status === "paused";
       startBtn.addEventListener("click", async () => {
@@ -569,6 +570,7 @@ const render = () => {
       actionsEl.appendChild(startBtn);
 
       const stopBtn = document.createElement("button");
+      stopBtn.className = "stop-btn";
       stopBtn.textContent = t("stopAction");
       stopBtn.disabled = imageBusy || image.status === "stopped";
       stopBtn.addEventListener("click", async () => {

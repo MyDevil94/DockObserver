@@ -189,6 +189,18 @@ button:disabled {
   background: rgba(247, 185, 85, 0.12);
 }
 
+.start-btn {
+  border: 1px solid rgba(77, 230, 164, 0.45);
+  color: #b9ffd9;
+  background: rgba(77, 230, 164, 0.16);
+}
+
+.stop-btn {
+  border: 1px solid rgba(255, 107, 107, 0.5);
+  color: #ffd0d0;
+  background: rgba(255, 107, 107, 0.16);
+}
+
 .image-list {
   display: grid;
   gap: 12px;
@@ -323,6 +335,20 @@ button:disabled {
   background: transparent;
   border: 1px solid var(--card-border);
   color: var(--text);
+}
+
+.group-actions .start-btn,
+.image-actions .start-btn {
+  border: 1px solid rgba(77, 230, 164, 0.45);
+  color: #b9ffd9;
+  background: rgba(77, 230, 164, 0.16);
+}
+
+.group-actions .stop-btn,
+.image-actions .stop-btn {
+  border: 1px solid rgba(255, 107, 107, 0.5);
+  color: #ffd0d0;
+  background: rgba(255, 107, 107, 0.16);
 }
 
 .image-meta a {

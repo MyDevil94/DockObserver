@@ -17,7 +17,6 @@ export type StoredImage = {
   declaredDigest: string | null;
   imageUrl: string | null;
   sourceUrl: string | null;
-  changelogUrl: string | null;
   status: "running" | "stopped" | "paused" | "unknown";
   lastSeen: string;
   lastUpdateCheck: string | null;
