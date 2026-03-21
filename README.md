@@ -20,12 +20,24 @@ A lightweight container that scans local Docker containers and Compose stacks, a
 docker compose up -d
 ```
 
+## Versioning
+- GitHub versioning is based on SemVer tags in the form `vX.Y.Z`, for example `v1.2.0`.
+- Pushing a tag like `v1.2.0` triggers the release workflow in `.github/workflows/release.yml`.
+- The workflow creates a GitHub Release and publishes multi-arch GHCR images for `linux/amd64` and `linux/arm64`.
+- Published image tags include `1.2.0`, `1.2`, `1`, and `latest`.
+- Example:
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
 ## Environment Variables
 - `DATA_DIR` (default `/data`)
 - `DOCKER_SOCKET` (default `/var/run/docker.sock`)
 - `LOCAL_REFRESH_HOURS` (default `6`)
 - `UPDATE_INTERVAL_MINUTES` (default `30`)
 - `UPDATE_BATCH_SIZE` (default `5`)
+- `NO_WEB_UPDATE_STACK_PATHS` (default empty, comma-separated stack directory paths). Matching Compose stacks are still checked for updates, but no update button is shown in the Web UI and `/api/update-group` is blocked for them.
 - `DRY_RUN` (default `false`) -> when `true`, no registry requests are made; each check randomly marks 0-2 images as dummy updates; update actions run as successful dummy runs (without `docker pull`/`docker compose up`)
 - `APP_LOCALE` (default `en`, values: `de` or `en`) for Web UI text and update-check logs (`docker compose logs -f`)
 - `PORT` (default `8080`)
@@ -38,6 +50,7 @@ docker compose up -d
 ## Notes
 - DockObserver derives Compose stack roots automatically from its own bind mounts, excluding `DATA_DIR` and `DOCKER_SOCKET`.
 - Only bind mounts with identical `source:target` paths are treated as stack roots. Example: `/opt/stacks:/opt/stacks`.
+- `NO_WEB_UPDATE_STACK_PATHS` matches stack directories, for example `/opt/stacks/dockobserver,/opt/stacks/reverse-proxy`.
 - Update checks compare the remote digest for the configured tag (without pulling during checks).
 - For digest-pinned Compose images, checks follow Compose semantics: no tag tracking, only validation whether the pinned digest is present/changed locally.
 - Compose updates run via `docker compose -f <compose> up --pull always -d`.

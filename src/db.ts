@@ -17,6 +17,7 @@ export type StoredImage = {
   declaredDigest: string | null;
   imageUrl: string | null;
   sourceUrl: string | null;
+  webUpdateDisabled: boolean;
   status: "running" | "stopped" | "paused" | "unknown";
   lastSeen: string;
   lastUpdateCheck: string | null;

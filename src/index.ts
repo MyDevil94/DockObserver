@@ -36,6 +36,14 @@ const MAX_JOB_HISTORY = 50;
 let refreshInFlight: Promise<void> | null = null;
 let updatesInFlight: Promise<void> | null = null;
 
+const normalizeFsPath = (value: string) => path.resolve(value);
+
+const isWebUpdateDisabledForComposeFile = (composeFile: string | null) => {
+  if (!composeFile) return false;
+  const composeDir = normalizeFsPath(path.dirname(composeFile));
+  return config.noWebUpdateStackPaths.some((item) => normalizeFsPath(item) === composeDir);
+};
+
 const getComposeMounts = async () => {
   const mounts = await loadCurrentContainerMounts(config.dockerSocketPath, [
     config.dataDir,
@@ -403,14 +411,20 @@ const refreshInventory = async () => {
         if (list.length === 0) previousByStable.delete(stableKey(item));
       }
     }
-    if (!old) return item;
+    if (!old) {
+      return {
+        ...item,
+        webUpdateDisabled: isWebUpdateDisabledForComposeFile(item.composeFile)
+      };
+    }
     return {
       ...item,
       lastUpdateCheck: old.lastUpdateCheck,
       lastUpdatedAt: old.lastUpdatedAt,
       declaredDigest: old.declaredDigest ?? item.declaredDigest,
       updateAvailable: old.updateAvailable,
-      updateMessage: old.updateMessage
+      updateMessage: old.updateMessage,
+      webUpdateDisabled: isWebUpdateDisabledForComposeFile(item.composeFile)
     };
   });
 
@@ -579,6 +593,10 @@ const start = async () => {
 
     if (!composeFile || ids.length === 0) {
       res.status(400).json({ error: "composeFile and ids are required" });
+      return;
+    }
+    if (isWebUpdateDisabledForComposeFile(composeFile)) {
+      res.status(403).json({ error: "web update disabled for this stack" });
       return;
     }
 

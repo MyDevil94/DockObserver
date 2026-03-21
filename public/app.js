@@ -143,6 +143,16 @@ const formatStatusLabel = (status) => {
   return status;
 };
 
+const copyToClipboard = async (value) => {
+  if (!value) return false;
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const shortDigest = (digest) => {
   if (!digest) return "-";
   const clean = digest.includes(":") ? digest.split(":")[1] : digest;
@@ -446,7 +456,8 @@ const render = () => {
     }
 
     const groupUpdates = imagesInGroup.filter((image) => image.updateAvailable && image.composeFile);
-    if (!isUnmanaged && groupUpdates.length > 0 && sample?.composeFile) {
+    const groupWebUpdateDisabled = imagesInGroup.some((image) => image.webUpdateDisabled);
+    if (!isUnmanaged && !groupWebUpdateDisabled && groupUpdates.length > 0 && sample?.composeFile) {
       const groupUpdateBtn = document.createElement("button");
       groupUpdateBtn.className = "update-btn";
       groupUpdateBtn.textContent = t("runUpdate");
@@ -523,11 +534,45 @@ const render = () => {
       const imageNameLabel = image.containerName ? t("imageLabel", { name: image.displayName }) : "";
       const projectUrl = normalizeUrl(image.imageUrl);
       const sourceUrl = normalizeUrl(image.sourceUrl);
-      meta.innerHTML = `
-        ${imageNameLabel ? `<span>${imageNameLabel}</span>` : ""}
-        <span class="tag">${t("tagLabel", { value: image.tag ?? "latest" })}</span>
-        <span class="digest">${t("digestLabel", { value: shortDigest(image.digest) })}</span>
-      `;
+      if (imageNameLabel) {
+        const imageLabelEl = document.createElement("span");
+        imageLabelEl.textContent = imageNameLabel;
+        meta.appendChild(imageLabelEl);
+      }
+
+      const tagEl = document.createElement("span");
+      tagEl.className = "tag";
+      tagEl.textContent = t("tagLabel", { value: image.tag ?? "latest" });
+      meta.appendChild(tagEl);
+
+      const digestWrapEl = document.createElement("span");
+      digestWrapEl.className = "digest-wrap";
+      const digestEl = document.createElement("span");
+      digestEl.className = "digest";
+      digestEl.textContent = t("digestLabel", { value: shortDigest(image.digest) });
+      if (image.digest) {
+        digestEl.title = image.digest;
+      }
+      digestWrapEl.appendChild(digestEl);
+
+      if (image.digest) {
+        const copyDigestBtn = document.createElement("button");
+        copyDigestBtn.className = "digest-copy-btn";
+        copyDigestBtn.type = "button";
+        copyDigestBtn.title = `Copy digest: ${image.digest}`;
+        copyDigestBtn.setAttribute("aria-label", "Copy digest");
+        copyDigestBtn.textContent = "⧉";
+        copyDigestBtn.addEventListener("click", async () => {
+          const copied = await copyToClipboard(image.digest);
+          copyDigestBtn.textContent = copied ? "✓" : "⧉";
+          setTimeout(() => {
+            copyDigestBtn.textContent = "⧉";
+          }, 1200);
+        });
+        digestWrapEl.appendChild(copyDigestBtn);
+      }
+
+      meta.appendChild(digestWrapEl);
 
       const actionsEl = document.createElement("div");
       actionsEl.className = "image-actions";
