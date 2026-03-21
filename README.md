@@ -20,17 +20,6 @@ A lightweight container that scans local Docker containers and Compose stacks, a
 docker compose up -d
 ```
 
-## Versioning
-- GitHub versioning is based on SemVer tags in the form `vX.Y.Z`, for example `v1.2.0`.
-- Pushing a tag like `v1.2.0` triggers the release workflow in `.github/workflows/release.yml`.
-- The workflow creates a GitHub Release and publishes multi-arch GHCR images for `linux/amd64` and `linux/arm64`.
-- Published image tags include `1.2.0`, `1.2`, `1`, and `latest`.
-- Example:
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
-
 ## Environment Variables
 - `DATA_DIR` (default `/data`)
 - `DOCKER_SOCKET` (default `/var/run/docker.sock`)
