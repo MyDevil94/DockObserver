@@ -101,10 +101,15 @@ const scanDir = async (root: string, results: string[], depth: number) => {
   }
 };
 
-export const findComposeFiles = async (mounts: string[]) => {
+export const findComposeFiles = async (
+  mounts: {
+    hostPath: string;
+    containerPath: string;
+  }[]
+) => {
   const results: string[] = [];
   for (const mount of mounts) {
-    await scanDir(mount, results, 6);
+    await scanDir(mount.containerPath, results, 6);
   }
   return results;
 };

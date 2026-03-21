@@ -5,10 +5,11 @@ import { randomUUID } from "node:crypto";
 import { loadConfig } from "./config.js";
 import { Db, StoredImage } from "./db.js";
 import { findComposeFiles, loadComposeServices } from "./compose.js";
-import { loadDockerSnapshot } from "./docker.js";
+import { guessImageRef, loadCurrentContainerMounts, loadDockerSnapshot } from "./docker.js";
 import { buildInventory } from "./inventory.js";
 import { checkImageUpdate, checkImagesDryRun, mergeUpdates, pickNextImages } from "./updater.js";
 import { isLocale, Locale, t } from "./i18n.js";
+import { normalizeRepoKey } from "./util/parseImage.js";
 
 const config = loadConfig();
 const db = new Db(config.dataDir);
@@ -34,6 +35,17 @@ const MAX_JOB_LOG_LINES = 1000;
 const MAX_JOB_HISTORY = 50;
 let refreshInFlight: Promise<void> | null = null;
 let updatesInFlight: Promise<void> | null = null;
+
+const getComposeMounts = async () => {
+  const mounts = await loadCurrentContainerMounts(config.dockerSocketPath, [
+    config.dataDir,
+    config.dockerSocketPath
+  ]);
+  return mounts.map((mount) => ({
+    hostPath: mount.source,
+    containerPath: mount.destination
+  })).filter((mount) => mount.hostPath === mount.containerPath);
+};
 
 const pruneJobs = () => {
   if (jobs.size <= MAX_JOB_HISTORY) return;
@@ -230,7 +242,70 @@ const runUnmanagedUpdate = async (jobId: string, image: StoredImage, pruneAfterU
   }
 };
 
-const refreshAfterUpdate = async (jobId: string) => {
+const runComposeLifecycle = async (
+  jobId: string,
+  composeFile: string,
+  serviceNames: string[],
+  action: "start" | "stop"
+) => {
+  if (config.dryRun) {
+    appendJobLog(jobId, `DRY_RUN=true, compose ${action} simulated.`);
+    return;
+  }
+
+  const projectDir = path.dirname(composeFile);
+  const composeArgs = [
+    "compose",
+    "--project-directory",
+    projectDir,
+    "-f",
+    composeFile,
+    action,
+    ...serviceNames
+  ];
+
+  const composeCode = await runCommandStreaming(jobId, "docker", composeArgs);
+  if (composeCode !== 0) throw new Error(`docker compose ${action} failed`);
+};
+
+const findContainerNamesForImage = async (image: StoredImage) => {
+  const snapshot = await loadDockerSnapshot(config.dockerSocketPath);
+  const wantedRepo = normalizeRepoKey({
+    raw: image.displayName,
+    registry: image.registry === "docker.io" ? null : image.registry,
+    repository: image.repo,
+    tag: image.tag,
+    digest: image.declaredDigest
+  });
+  const wantedTag = image.tag ?? "latest";
+
+  return snapshot.containers
+    .filter((container) => {
+      const ref = guessImageRef(snapshot, container.imageId, container.image);
+      return normalizeRepoKey(ref) === wantedRepo && (ref.tag ?? "latest") === wantedTag;
+    })
+    .map((container) => container.name)
+    .filter(Boolean);
+};
+
+const runImageLifecycle = async (jobId: string, image: StoredImage, action: "start" | "stop") => {
+  if (image.composeFile && image.service) {
+    await runComposeLifecycle(jobId, image.composeFile, [image.service], action);
+    return;
+  }
+
+  const containerNames = await findContainerNamesForImage(image);
+  if (containerNames.length === 0) throw new Error("no matching containers found");
+  if (config.dryRun) {
+    appendJobLog(jobId, `DRY_RUN=true, docker ${action} simulated for ${containerNames.join(", ")}.`);
+    return;
+  }
+
+  const actionCode = await runCommandStreaming(jobId, "docker", [action, ...containerNames]);
+  if (actionCode !== 0) throw new Error(`docker ${action} failed`);
+};
+
+const refreshAfterTask = async (jobId: string) => {
   if (config.dryRun) {
     appendJobLog(jobId, "DRY_RUN=true, inventory refresh skipped.");
     return;
@@ -289,7 +364,7 @@ const runUpdateChecks = async (targets: StoredImage[], origin: "manual" | "autom
 
 const refreshInventory = async () => {
   const snapshot = await loadDockerSnapshot(config.dockerSocketPath);
-  const composeFiles = await findComposeFiles(config.composeMounts);
+  const composeFiles = await findComposeFiles(await getComposeMounts());
   const composeServices = (await Promise.all(composeFiles.map((file) => loadComposeServices(file)))).flat();
 
   const inventory = buildInventory(snapshot, composeServices);
@@ -532,13 +607,95 @@ const start = async () => {
           targets.map((item) => item.id),
           config.dryRun ? "dry-run update simulated" : "update executed"
         );
-        await refreshAfterUpdate(job.id);
+        await refreshAfterTask(job.id);
         appendJobLog(job.id, "update finished successfully");
         finishJob(job.id, "success");
       } catch (err) {
         const message = err instanceof Error ? err.message : "group update failed";
         appendJobLog(job.id, `failed: ${message}`);
         await applyUpdateFailure(targets.map((item) => item.id), message);
+        finishJob(job.id, "failed");
+      }
+    })();
+  });
+
+  app.post("/api/start-group", async (req, res) => {
+    const composeFile = String(req.body?.composeFile ?? "");
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+
+    if (!composeFile || ids.length === 0) {
+      res.status(400).json({ error: "composeFile and ids are required" });
+      return;
+    }
+
+    const state = db.getState();
+    const targets = state.images.filter(
+      (image) => ids.includes(image.id) && image.composeFile === composeFile
+    );
+    if (targets.length === 0) {
+      res.status(404).json({ error: "no matching images found" });
+      return;
+    }
+
+    const stackName = targets[0]?.stack ?? path.basename(path.dirname(composeFile));
+    const serviceNames = Array.from(
+      new Set(targets.map((image) => image.service).filter((name): name is string => Boolean(name)))
+    );
+
+    const job = createJob("group", `Start ${stackName}`, targets.map((item) => item.id));
+    appendJobLog(job.id, `queued compose start for ${serviceNames.length} service(s)`);
+    res.status(202).json({ jobId: job.id });
+
+    void (async () => {
+      try {
+        await runComposeLifecycle(job.id, composeFile, serviceNames, "start");
+        await refreshAfterTask(job.id);
+        appendJobLog(job.id, "start finished successfully");
+        finishJob(job.id, "success");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "group start failed";
+        appendJobLog(job.id, `failed: ${message}`);
+        finishJob(job.id, "failed");
+      }
+    })();
+  });
+
+  app.post("/api/stop-group", async (req, res) => {
+    const composeFile = String(req.body?.composeFile ?? "");
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+
+    if (!composeFile || ids.length === 0) {
+      res.status(400).json({ error: "composeFile and ids are required" });
+      return;
+    }
+
+    const state = db.getState();
+    const targets = state.images.filter(
+      (image) => ids.includes(image.id) && image.composeFile === composeFile
+    );
+    if (targets.length === 0) {
+      res.status(404).json({ error: "no matching images found" });
+      return;
+    }
+
+    const stackName = targets[0]?.stack ?? path.basename(path.dirname(composeFile));
+    const serviceNames = Array.from(
+      new Set(targets.map((image) => image.service).filter((name): name is string => Boolean(name)))
+    );
+
+    const job = createJob("group", `Stop ${stackName}`, targets.map((item) => item.id));
+    appendJobLog(job.id, `queued compose stop for ${serviceNames.length} service(s)`);
+    res.status(202).json({ jobId: job.id });
+
+    void (async () => {
+      try {
+        await runComposeLifecycle(job.id, composeFile, serviceNames, "stop");
+        await refreshAfterTask(job.id);
+        appendJobLog(job.id, "stop finished successfully");
+        finishJob(job.id, "success");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "group stop failed";
+        appendJobLog(job.id, `failed: ${message}`);
         finishJob(job.id, "failed");
       }
     })();
@@ -567,13 +724,77 @@ const start = async () => {
       try {
         await runUnmanagedUpdate(job.id, image, pruneAfterUpdate);
         await applyUpdateSuccess([id], config.dryRun ? "dry-run update simulated" : "update executed");
-        await refreshAfterUpdate(job.id);
+        await refreshAfterTask(job.id);
         appendJobLog(job.id, "update finished successfully");
         finishJob(job.id, "success");
       } catch (err) {
         const message = err instanceof Error ? err.message : "image update failed";
         appendJobLog(job.id, `failed: ${message}`);
         await applyUpdateFailure([id], message);
+        finishJob(job.id, "failed");
+      }
+    })();
+  });
+
+  app.post("/api/start-image", async (req, res) => {
+    const id = String(req.body?.id ?? "");
+    if (!id) {
+      res.status(400).json({ error: "id required" });
+      return;
+    }
+
+    const state = db.getState();
+    const image = state.images.find((item) => item.id === id);
+    if (!image) {
+      res.status(404).json({ error: "image not found" });
+      return;
+    }
+
+    const job = createJob("image", `Start ${image.displayName}:${image.tag ?? "latest"}`, [image.id]);
+    appendJobLog(job.id, "queued start");
+    res.status(202).json({ jobId: job.id });
+
+    void (async () => {
+      try {
+        await runImageLifecycle(job.id, image, "start");
+        await refreshAfterTask(job.id);
+        appendJobLog(job.id, "start finished successfully");
+        finishJob(job.id, "success");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "image start failed";
+        appendJobLog(job.id, `failed: ${message}`);
+        finishJob(job.id, "failed");
+      }
+    })();
+  });
+
+  app.post("/api/stop-image", async (req, res) => {
+    const id = String(req.body?.id ?? "");
+    if (!id) {
+      res.status(400).json({ error: "id required" });
+      return;
+    }
+
+    const state = db.getState();
+    const image = state.images.find((item) => item.id === id);
+    if (!image) {
+      res.status(404).json({ error: "image not found" });
+      return;
+    }
+
+    const job = createJob("image", `Stop ${image.displayName}:${image.tag ?? "latest"}`, [image.id]);
+    appendJobLog(job.id, "queued stop");
+    res.status(202).json({ jobId: job.id });
+
+    void (async () => {
+      try {
+        await runImageLifecycle(job.id, image, "stop");
+        await refreshAfterTask(job.id);
+        appendJobLog(job.id, "stop finished successfully");
+        finishJob(job.id, "success");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "image stop failed";
+        appendJobLog(job.id, `failed: ${message}`);
         finishJob(job.id, "failed");
       }
     })();

@@ -2,6 +2,7 @@ const groupsEl = document.getElementById("groups");
 const refreshBtn = document.getElementById("refreshBtn");
 const batchBtn = document.getElementById("batchBtn");
 const localeSelectEl = document.getElementById("localeSelect");
+const heroIconEl = document.getElementById("heroIcon");
 const lastRefreshEl = document.getElementById("lastRefresh");
 const lastAutomaticCheckEl = document.getElementById("lastAutomaticCheck");
 const countEl = document.getElementById("count");
@@ -38,6 +39,8 @@ const I18N = {
     unmanaged: "Unmanaged",
     compose: "Compose",
     checkUpdates: "Auf Update prüfen",
+    startAction: "Start",
+    stopAction: "Stop",
     runUpdate: "Update ausführen",
     updateForGroup: "Update für Gruppe {name}",
     groupUpdateText: "Folgende Services haben ein Update. Auswahl optional anpassen.",
@@ -62,15 +65,15 @@ const I18N = {
     pruneLabel: "Image prune nach Update ausführen (`docker image prune -af`)",
     cancel: "Abbrechen",
     startUpdate: "Update starten",
-    updateConsole: "Update Konsole",
+    updateConsole: "Job Konsole",
     close: "Schließen",
-    noJobs: "Keine Update-Jobs.",
+    noJobs: "Keine Jobs.",
     running: "running {seconds}s",
     job: "Job: {value}",
     status: "Status: {value}",
     start: "Start: {value}",
     end: "Ende: {value}",
-    busyTitle: "Update läuft ({scope}). Konsole öffnen",
+    busyTitle: "Job läuft ({scope}). Konsole öffnen",
     scopeGroup: "Gruppe",
     scopeImage: "Image"
   },
@@ -83,6 +86,8 @@ const I18N = {
     unmanaged: "Unmanaged",
     compose: "Compose",
     checkUpdates: "Check for updates",
+    startAction: "Start",
+    stopAction: "Stop",
     runUpdate: "Run update",
     updateForGroup: "Update group {name}",
     groupUpdateText: "The following services have updates. You can adjust selection.",
@@ -107,15 +112,15 @@ const I18N = {
     pruneLabel: "Run image prune after update (`docker image prune -af`)",
     cancel: "Cancel",
     startUpdate: "Start update",
-    updateConsole: "Update Console",
+    updateConsole: "Job Console",
     close: "Close",
-    noJobs: "No update jobs.",
+    noJobs: "No jobs.",
     running: "running {seconds}s",
     job: "Job: {value}",
     status: "Status: {value}",
     start: "Start: {value}",
     end: "End: {value}",
-    busyTitle: "Update running ({scope}). Open console",
+    busyTitle: "Job running ({scope}). Open console",
     scopeGroup: "group",
     scopeImage: "image"
   }
@@ -131,6 +136,11 @@ const t = (key, vars = {}) => {
     const value = vars[name];
     return value === undefined ? "" : String(value);
   });
+};
+
+const formatStatusLabel = (status) => {
+  if (status === "paused") return "idle/sleep";
+  return status;
 };
 
 const shortDigest = (digest) => {
@@ -394,6 +404,47 @@ const render = () => {
     });
     actions.appendChild(groupCheckBtn);
 
+    if (!isUnmanaged && sample?.composeFile) {
+      const groupStartBtn = document.createElement("button");
+      groupStartBtn.textContent = t("startAction");
+      groupStartBtn.disabled =
+        groupBusy || imagesInGroup.every((image) => image.status === "running" || image.status === "paused");
+      groupStartBtn.addEventListener("click", async () => {
+        try {
+          const result = await postJson("/api/start-group", {
+            composeFile: sample.composeFile,
+            ids: imagesInGroup.map((image) => image.id)
+          });
+          if (result?.jobId) openConsole(result.jobId);
+          await fetchJobs();
+          await fetchState();
+          render();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : t("updateFailed"));
+        }
+      });
+      actions.appendChild(groupStartBtn);
+
+      const groupStopBtn = document.createElement("button");
+      groupStopBtn.textContent = t("stopAction");
+      groupStopBtn.disabled = groupBusy || imagesInGroup.every((image) => image.status === "stopped");
+      groupStopBtn.addEventListener("click", async () => {
+        try {
+          const result = await postJson("/api/stop-group", {
+            composeFile: sample.composeFile,
+            ids: imagesInGroup.map((image) => image.id)
+          });
+          if (result?.jobId) openConsole(result.jobId);
+          await fetchJobs();
+          await fetchState();
+          render();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : t("updateFailed"));
+        }
+      });
+      actions.appendChild(groupStopBtn);
+    }
+
     const groupUpdates = imagesInGroup.filter((image) => image.updateAvailable && image.composeFile);
     if (!isUnmanaged && groupUpdates.length > 0 && sample?.composeFile) {
       const groupUpdateBtn = document.createElement("button");
@@ -464,7 +515,7 @@ const render = () => {
 
       const status = document.createElement("div");
       status.className = "status";
-      status.innerHTML = `${image.updateAvailable ? `<span class="update-chip">${t("updateChip")}</span>` : ""}<span class="status-dot ${image.status}"></span>${image.status}`;
+      status.innerHTML = `${image.updateAvailable ? `<span class="update-chip">${t("updateChip")}</span>` : ""}<span class="status-dot ${image.status}"></span>${formatStatusLabel(image.status)}`;
       top.appendChild(status);
 
       const meta = document.createElement("div");
@@ -500,6 +551,38 @@ const render = () => {
         }
       });
       actionsEl.appendChild(checkBtn);
+
+      const startBtn = document.createElement("button");
+      startBtn.textContent = t("startAction");
+      startBtn.disabled = imageBusy || image.status === "running" || image.status === "paused";
+      startBtn.addEventListener("click", async () => {
+        try {
+          const result = await postJson("/api/start-image", { id: image.id });
+          if (result?.jobId) openConsole(result.jobId);
+          await fetchJobs();
+          await fetchState();
+          render();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : t("updateFailed"));
+        }
+      });
+      actionsEl.appendChild(startBtn);
+
+      const stopBtn = document.createElement("button");
+      stopBtn.textContent = t("stopAction");
+      stopBtn.disabled = imageBusy || image.status === "stopped";
+      stopBtn.addEventListener("click", async () => {
+        try {
+          const result = await postJson("/api/stop-image", { id: image.id });
+          if (result?.jobId) openConsole(result.jobId);
+          await fetchJobs();
+          await fetchState();
+          render();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : t("updateFailed"));
+        }
+      });
+      actionsEl.appendChild(stopBtn);
 
       if (isUnmanaged && image.updateAvailable) {
         const updateBtn = document.createElement("button");
@@ -619,6 +702,12 @@ const refreshAll = async () => {
   render();
   renderConsole();
 };
+
+if (heroIconEl) {
+  heroIconEl.addEventListener("error", () => {
+    heroIconEl.remove();
+  });
+}
 
 refreshBtn.addEventListener("click", async () => {
   refreshBtn.disabled = true;

@@ -4,7 +4,7 @@ A lightweight container that scans local Docker containers and Compose stacks, a
 
 ## Features
 - Docker socket scan (running + stopped containers)
-- Compose scan via mounted directories (`COMPOSE_MOUNTS`)
+- Compose scan via the container's bind mounts. Stack mounts must use identical `source:target` paths for lifecycle actions to work reliably.
 - Resolves Compose `image` variables from `.env` in each stack directory
 - If a Compose `image` cannot be resolved directly, it maps via Docker Compose labels from the socket
 - Persistent JSON store at `/data/db.json`
@@ -22,7 +22,6 @@ docker compose up -d
 ## Environment Variables
 - `DATA_DIR` (default `/data`)
 - `DOCKER_SOCKET` (default `/var/run/docker.sock`)
-- `COMPOSE_MOUNTS` (default empty, comma-separated)
 - `LOCAL_REFRESH_HOURS` (default `6`)
 - `UPDATE_INTERVAL_MINUTES` (default `30`)
 - `UPDATE_BATCH_SIZE` (default `5`)
@@ -36,6 +35,8 @@ docker compose up -d
 - Because the setting is stored globally on the server, it applies across devices.
 
 ## Notes
+- DockObserver derives Compose stack roots automatically from its own bind mounts, excluding `DATA_DIR` and `DOCKER_SOCKET`.
+- Only bind mounts with identical `source:target` paths are treated as stack roots. Example: `/opt/stacks:/opt/stacks`.
 - Update checks compare the remote digest for the configured tag (without pulling during checks).
 - For digest-pinned Compose images, checks follow Compose semantics: no tag tracking, only validation whether the pinned digest is present/changed locally.
 - Compose updates run via `docker compose -f <compose> up --pull always -d`.

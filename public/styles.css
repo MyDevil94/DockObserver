@@ -33,6 +33,7 @@ body {
 }
 
 .hero {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas:
@@ -43,17 +44,28 @@ body {
   background: linear-gradient(120deg, #0d1822, #122533);
   border: 1px solid var(--card-border);
   border-radius: 20px;
-  padding: 28px 30px;
+  padding: 7px 7px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
-}
-
-.hero-copy {
-  grid-area: copy;
 }
 
 .locale-switch {
   grid-area: locale;
   justify-self: end;
+}
+
+.hero-copy {
+  grid-area: copy;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hero-icon {
+  width: clamp(40px, 5vw, 56px);
+  height: clamp(40px, 5vw, 56px);
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 
 .eyebrow {
@@ -78,10 +90,10 @@ h1 {
 }
 
 .actions {
-  grid-area: actions;
-  justify-self: end;
   display: flex;
   gap: 12px;
+  grid-area: actions;
+  justify-self: end;
 }
 
 #localeSelect {
@@ -157,6 +169,13 @@ button:disabled {
 .group-path {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.group-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .group-actions button {
@@ -497,7 +516,6 @@ button:disabled {
   }
   .actions {
     width: 100%;
-    justify-self: stretch;
   }
   button {
     flex: 1;

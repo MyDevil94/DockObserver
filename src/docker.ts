@@ -22,6 +22,13 @@ export type DockerSnapshot = {
   images: ImageSnapshot[];
 };
 
+export type ContainerMount = {
+  type: string;
+  source: string;
+  destination: string;
+  readOnly: boolean;
+};
+
 type RawContainer = {
   Id: string;
   Names?: string[];
@@ -36,6 +43,13 @@ type RawImage = {
   RepoTags?: string[];
   RepoDigests?: string[];
   Labels?: Record<string, string>;
+};
+
+type RawMount = {
+  Type?: string;
+  Source?: string;
+  Destination?: string;
+  RW?: boolean;
 };
 
 const mapState = (state?: string): ContainerSnapshot["state"] => {
@@ -68,6 +82,38 @@ export const loadDockerSnapshot = async (socketPath: string): Promise<DockerSnap
   }));
 
   return { containers, images };
+};
+
+export const loadCurrentContainerMounts = async (
+  socketPath: string,
+  ignoredDestinations: string[]
+): Promise<ContainerMount[]> => {
+  const containerId = process.env.HOSTNAME?.trim();
+  if (!containerId) return [];
+
+  const docker = new Docker({ socketPath });
+  try {
+    const inspected = (await docker.getContainer(containerId).inspect()) as {
+      Mounts?: RawMount[];
+    };
+    const ignored = new Set(ignoredDestinations);
+    return (inspected.Mounts ?? [])
+      .map((mount) => ({
+        type: mount.Type ?? "",
+        source: mount.Source ?? "",
+        destination: mount.Destination ?? "",
+        readOnly: mount.RW === false
+      }))
+      .filter(
+        (mount) =>
+          mount.type === "bind" &&
+          mount.source &&
+          mount.destination &&
+          !ignored.has(mount.destination)
+      );
+  } catch {
+    return [];
+  }
 };
 
 export const resolveImageDigest = (snapshot: DockerSnapshot, imageId: string) => {

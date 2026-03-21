@@ -40,7 +40,7 @@ const defaultState: DbState = {
   lastRefresh: null,
   lastAutomaticCheck: null,
   settings: {
-    locale: "de"
+    locale: "en"
   }
 };
 
